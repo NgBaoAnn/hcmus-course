@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { confirm, render, requireId, show } from './terminal.mjs';
+import { confirm, render, requireId, show } from './terminal.js';
 
 test('IDs must be positive safe integers', () => {
   assert.equal(requireId('42', 'quiz'), 42);
@@ -26,8 +26,8 @@ test('confirmation fails closed without an interactive terminal', async () => {
 });
 
 test('JSON output escapes untrusted control characters', (t) => {
-  const lines = [];
-  t.mock.method(console, 'log', (line) => lines.push(line));
+  const lines: string[] = [];
+  t.mock.method(console, 'log', (line: string) => lines.push(line));
   show({ name: 'x\x1by' }, { json: true });
   assert.equal(lines.length, 1);
   assert.equal(JSON.parse(lines[0]).name, 'x\x1by');

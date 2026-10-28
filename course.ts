@@ -3,12 +3,14 @@ import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { api, decodeAppToken, publicConfig, SITE } from './moodle.mjs';
-import { show } from './terminal.mjs';
+import { parseArgs } from 'node:util';
+import { api, decodeAppToken, publicConfig, SITE, type SiteInfo } from './moodle.js';
+import { render, requireId, show } from './terminal.js';
+import { listCourses, viewCourse, deadlines, grades, notices, type Course, type AssignmentsResponse } from './student.js';
 
 const configDir = join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'course-cli-spike');
 const authFile = join(configDir, 'auth.json');
-const print = (value) => show(value, { json: true });
+const print = (value: unknown) => show(value, { json: true });
 const launchPath = '/admin/tool/mobile/launch.php';
 
 async function login() {
@@ -24,8 +26,8 @@ async function login() {
   const launch = new URL(launchPath, SITE);
   launch.search = new URLSearchParams({
     service: 'moodle_mobile_app', passport, urlscheme: 'coursecli', confirmed: '1',
-    oauthsso: new URL(microsoft.url).searchParams.get('id'),
-  });
+    oauthsso: new URL(microsoft.url).searchParams.get('id') ?? '',
+  }).toString();
 
   const { chromium } = await import('playwright-core');
   let browser;
@@ -49,7 +51,7 @@ async function login() {
       throw new Error('Đăng nhập chưa hoàn tất, cửa sổ đã đóng hoặc trường từ chối cấp token. Chạy lại auth login để thử lại.');
     }
     const token = decodeAppToken(href, passport);
-    const info = await api(token, 'core_webservice_get_site_info');
+    const info = await api<SiteInfo>(token, 'core_webservice_get_site_info');
     if (!Number.isSafeInteger(info.userid) || info.userid <= 0) {
       throw new Error('API không trả thông tin sinh viên hợp lệ; chưa lưu token.');
     }
@@ -67,20 +69,20 @@ async function login() {
   }
 }
 
-async function readToken() {
-  let token;
+async function readToken(): Promise<string> {
+  let token: unknown;
   try {
     ({ token } = JSON.parse(await readFile(authFile, 'utf8')));
-    if (!/^[a-f0-9]{32}$/.test(token)) throw new Error();
+    if (typeof token !== 'string' || !/^[a-f0-9]{32}$/.test(token)) throw new Error();
   } catch {
-    throw new Error('Chưa có token hợp lệ. Chạy: node course.mjs auth login');
+    throw new Error('Chưa có token hợp lệ. Chạy: course auth login');
   }
   return token;
 }
 
 async function probe() {
   const token = await readToken();
-  const info = await api(token, 'core_webservice_get_site_info');
+  const info = await api<SiteInfo>(token, 'core_webservice_get_site_info');
   const names = new Set(info.functions?.map((fn) => fn.name));
   const capabilities = Object.fromEntries([
     'core_enrol_get_users_courses', 'mod_assign_get_assignments',
@@ -90,11 +92,11 @@ async function probe() {
     print({ userid: info.userid, capabilities });
     throw new Error('Token chưa được cấp đủ API để đọc môn học và bài tập.');
   }
-  const courses = await api(token, 'core_enrol_get_users_courses', { userid: info.userid });
+  const courses = await api<Course[]>(token, 'core_enrol_get_users_courses', { userid: info.userid });
   if (!Array.isArray(courses)) throw new Error('Danh sách môn học trả về không hợp lệ.');
   // shortcut: probe reads all enrolled courses once, add course selection in the real CLI.
   const params = Object.fromEntries(courses.map((course, index) => [`courseids[${index}]`, course.id]));
-  const result = courses.length ? await api(token, 'mod_assign_get_assignments', params) : { courses: [], warnings: [] };
+  const result = courses.length ? await api<AssignmentsResponse>(token, 'mod_assign_get_assignments', params) : { courses: [], warnings: [] };
   if (!Array.isArray(result.courses)) throw new Error('Danh sách bài tập trả về không hợp lệ.');
   const assignments = result.courses.flatMap((course) =>
     (course.assignments ?? []).map((assignment) => ({ ...assignment, courseid: course.id })));
@@ -116,7 +118,35 @@ async function probe() {
 async function main() {
   const args = process.argv.slice(2);
   const command = args.join(' ');
-  if (command === 'doctor') {
+  if (['list', 'view', 'deadlines', 'grades', 'notices'].includes(args[0])) {
+    const action = args[0];
+    const options = {
+      json: { type: 'boolean' as const },
+      ...(['deadlines', 'grades', 'notices'].includes(action) ? { course: { type: 'string' as const } } : {}),
+      ...(action === 'deadlines' ? { days: { type: 'string' as const }, overdue: { type: 'boolean' as const } } : {}),
+    };
+    const { values, positionals } = parseArgs({ args: args.slice(1), options, allowPositionals: true });
+    if (positionals.length !== (action === 'view' ? 1 : 0)) throw new Error(`Đối số không hợp lệ cho course ${action}.`);
+    const id = action === 'view' ? requireId(positionals[0], 'Course ID')
+      : values.course !== undefined || ['grades', 'notices'].includes(action) ? requireId(typeof values.course === 'string' ? values.course : undefined, 'Course ID') : undefined;
+    const days = values.days === undefined ? 14 : requireId(typeof values.days === 'string' ? values.days : undefined, 'Số ngày');
+    const token = await readToken();
+    const result = action === 'list' ? await listCourses(token)
+      : action === 'view' ? await viewCourse(token, id)
+      : action === 'deadlines' ? await deadlines(token, { courseId: id, days, overdue: values.overdue === true })
+      : action === 'grades' ? await grades(token, id) : await notices(token, id);
+    for (const warning of result.warnings ?? []) console.error(`Cảnh báo: ${render(warning.message || warning.warningcode)}`);
+    if (values.json) show(result, { json: true });
+    else if ('courses' in result) show(result.courses.map((course) => `${course.id}\t${course.fullname}`).join('\n') || 'Không có môn học.');
+    else if ('sections' in result) show([result.webUrl, ...result.sections.map((section) => [section.name, section.summaryText,
+      ...section.modules.map((module) => `${module.modname}: ${module.name}\n${module.descriptionText}\n${module.url || ''}`)].join('\n'))].join('\n\n'));
+    else if ('deadlines' in result) show(result.deadlines.map((deadline) =>
+      `${deadline.type} ${deadline.id}: ${deadline.name}\n${deadline.dueLocal}${deadline.overdue ? ' — quá hạn' : ''}\nTrạng thái: ${deadline.state}${deadline.attemptsRemaining != null ? `; số lượt còn: ${deadline.attemptsRemaining}` : ''}${deadline.cutoffLocal ? `\nHạn cuối nhận bài (cutoff): ${deadline.cutoffLocal}` : ''}\n${deadline.webUrl}`
+    ).join('\n\n') || 'Không có deadline trong khoảng đã chọn.');
+    else if ('usergrades' in result) show((result.usergrades ?? []).flatMap((entry) => (entry.gradeitems ?? []).map((item) =>
+      `${render(item.itemname)}\t${render(item.gradeformatted ?? '-')}\t${render(item.rangeformatted ?? '')}${item.gradehiddenbydate || item.hidden ? ' (ẩn)' : ''}`)).join('\n') || 'Chưa có điểm được công bố.');
+    else if ('notices' in result) show(result.notices.map((notice) => `${notice.subject}\n${notice.createdLocal || ''}\n${notice.messageText}\n${notice.webUrl}`).join('\n\n') || 'Không có thông báo.');
+  } else if (command === 'doctor') {
     const config = await publicConfig();
     print({ site: SITE, name: config.sitename, webservices: config.enablewebservices,
       mobileWebservices: config.enablemobilewebservice,
@@ -130,7 +160,7 @@ async function main() {
     await probe();
   } else {
     if (command && command !== '--help') throw new Error(`Lệnh không hợp lệ: ${command}`);
-    console.log('Bản thử chỉ đọc dữ liệu:\n  course doctor\n  course auth login\n  course probe\n  course auth logout');
+    console.log('Course CLI:\n  course doctor\n  course auth login\n  course probe\n  course auth logout\n  course list [--json]\n  course view <course-id> [--json]\n  course deadlines [--course <course-id>] [--days <positive-integer>] [--overdue] [--json]\n  course grades --course <course-id> [--json]\n  course notices --course <course-id> [--json]');
   }
 }
 

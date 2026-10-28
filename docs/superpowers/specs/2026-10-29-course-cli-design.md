@@ -8,7 +8,8 @@ CLI cho sinh viên sử dụng `https://courses.fit.hcmus.edu.vn`, với trải 
 tương tự `gh`. Ưu tiên đọc đề, tải tài liệu, kiểm tra deadline, nộp bài, làm quiz
 và xác minh kết quả nộp; bổ sung xem điểm, phản hồi và thông báo môn học.
 
-Người dùng đã chọn ưu tiên API, đăng nhập Microsoft và yêu cầu có làm quiz.
+Người dùng đã chọn ưu tiên API, đăng nhập Microsoft, yêu cầu có làm quiz và
+chọn TypeScript cho toàn bộ mã nguồn CLI.
 Những quyết định triển khai
 chưa được người dùng chỉ định dưới đây là đề xuất của người viết.
 
@@ -39,8 +40,9 @@ Không xây hệ thống kết hợp scrape website để âm thầm thay thế 
 
 ## Phạm vi bản đầu
 
-Tên lệnh đề xuất: `course`. Node.js >=22, JavaScript ESM, không có bước build.
-Đăng ký `bin` để chạy qua `npm link`; giữ cách chạy `node course.mjs`.
+Tên lệnh đề xuất: `course`. Node.js >=22, TypeScript ESM, có bước biên dịch bằng
+`tsc` và kiểm tra kiểu nghiêm ngặt. Đăng ký `bin` trỏ vào bản biên dịch để chạy qua
+`npm link`; cách chạy trực tiếp là `node dist/course.js` sau `npm run build`.
 
 ```text
 course auth login
@@ -239,11 +241,14 @@ Builder kiểm tra schema thực tế và nguồn Moodle chính thức trước 
 
 ## Cấu trúc và bảo vệ dữ liệu
 
-- Dùng lại `moodle.mjs` cho REST/config/token decoding. Tách auth, thao tác Assignment/Quiz
+- Chuyển `moodle.mjs` và các phần của bản thử sang `.ts`, giữ hành vi và token hiện có.
+  Dùng lại `moodle.ts` cho REST/config/token decoding. Tách auth, thao tác Assignment/Quiz
   và định dạng terminal khi cần để kiểm thử; không dựng framework/plugin system.
 - Dùng `node:util.parseArgs` và thư viện chuẩn cho lệnh/file. Giữ `playwright-core`
   cho Chrome đăng nhập. Đề xuất thêm một thư viện chuyển HTML thành text nếu thư viện
   chuẩn không đủ; không dùng regex tự chế để xử lý HTML/entities.
+- `package.json` có `build`/`test` và `bin` dùng JavaScript đã biên dịch; `dist/`
+  không được commit. Chỉ `.ts` là mã nguồn được chỉnh sửa và lưu trong Git.
 - Giữ đường dẫn token hiện tại để phiên đã đăng nhập tiếp tục dùng được:
   `$XDG_CONFIG_HOME/course-cli-spike/auth.json`, mặc định `~/.config/course-cli-spike/auth.json`.
   Ghi nguyên tử, quyền file `0600`; không lưu token trong repo, log hay JSON đầu ra.
@@ -261,7 +266,8 @@ Builder kiểm tra schema thực tế và nguồn Moodle chính thức trước 
 
 ## Kiểm chứng và tiêu chí hoàn thành
 
-- Các test token/API hiện có tiếp tục đạt. Bổ sung test cho parsing lệnh/ID, thời gian
+- Các test token/API hiện có được chuyển sang `.ts` và tiếp tục đạt. `tsc` phải đạt
+  trước khi chạy test. Bổ sung test cho parsing lệnh/ID, thời gian
   gia hạn/cutoff, warning/thiếu quyền, tên file và tải dở.
 - Test nộp bài bằng fixture: hủy trước upload; validate lỗi; file/text/mixed;
   thay thế file được xác nhận; giữ phần không sửa; statement; lưu nháp; save là nộp;

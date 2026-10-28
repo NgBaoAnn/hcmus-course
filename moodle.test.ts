@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { test } from 'node:test';
-import { api, decodeAppToken, SITE } from './moodle.mjs';
+import { api, decodeAppToken, SITE } from './moodle.js';
 
 const passport = 'test-passport';
 const siteId = createHash('md5').update(SITE + passport).digest('hex');
 const token = 'a'.repeat(32);
-const callback = (value) => `coursecli://token=${Buffer.from(value).toString('base64')}`;
+const callback = (value: string) => `coursecli://token=${Buffer.from(value).toString('base64')}`;
 
 test('accepts a token bound to this login and discards the private token', () => {
   assert.equal(decodeAppToken(callback(`${siteId}:::${token}:::private`), passport), token);
@@ -26,8 +26,9 @@ test('rejects another login, malformed tokens and unexpected callback schemes', 
 });
 
 test('sends the token in a POST body, refuses redirects and reads JSON', async (t) => {
-  t.mock.method(globalThis, 'fetch', async (url, options) => {
+  t.mock.method(globalThis, 'fetch', async (url: RequestInfo | URL, options?: RequestInit) => {
     assert.equal(url, `${SITE}/webservice/rest/server.php`);
+    assert.ok(options?.body instanceof URLSearchParams);
     assert.equal(options.method, 'POST');
     assert.equal(options.redirect, 'error');
     assert.equal(options.body.get('wstoken'), token);
@@ -43,6 +44,7 @@ test('reports API rejection without exposing the token', async (t) => {
     exception: 'moodle_exception', errorcode: 'invalidtoken', message: `Secret ${token}`,
   })));
   await assert.rejects(api(token, 'core_webservice_get_site_info'), (error) => {
+    assert.ok(error instanceof Error);
     assert.match(error.message, /invalidtoken/);
     assert.ok(!error.message.includes(token));
     return true;
@@ -50,8 +52,8 @@ test('reports API rejection without exposing the token', async (t) => {
 });
 
 test('rejects HTTP errors and non-JSON responses without printing response bodies', async (t) => {
-  t.mock.method(globalThis, 'fetch', async () => new Response(token, { status: 403 }));
+  const mocked = t.mock.method(globalThis, 'fetch', async () => new Response(token, { status: 403 }));
   await assert.rejects(api(token, 'core_webservice_get_site_info'), /HTTP 403/);
-  globalThis.fetch.mock.mockImplementation(async () => new Response(`<html>${token}</html>`));
+  mocked.mock.mockImplementation(async () => new Response(`<html>${token}</html>`));
   await assert.rejects(api(token, 'core_webservice_get_site_info'), /JSON/);
 });
