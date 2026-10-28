@@ -15,6 +15,12 @@ test('terminal rendering decodes HTML and strips control characters', () => {
   assert.equal(render('<a href="javascript:alert(1)">Unsafe</a>'), 'Unsafe');
 });
 
+test('missing Moodle descriptions render as empty text', () => {
+  assert.equal(render(undefined), '');
+  assert.equal(render(''), '');
+  assert.equal(render('Plain text'), 'Plain text');
+});
+
 test('confirmation fails closed without an interactive terminal', async () => {
   assert.equal(await confirm('Continue?'), false);
 });

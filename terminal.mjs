@@ -11,7 +11,8 @@ export function requireId(value, label) {
 
 export function render(html) {
   const { document } = parseHTML(String(html ?? ''));
-  const root = document.body?.childNodes.length ? document.body : document;
+  const body = document.documentElement?.localName === 'html' ? document.body : null;
+  const root = body?.childNodes.length ? body : document;
   const walk = (node) => {
     if (node.nodeType === 3) return node.textContent;
     if (node.nodeType !== 1 && node.nodeType !== 9) return '';
