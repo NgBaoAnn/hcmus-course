@@ -137,17 +137,12 @@ export async function deadlines(token: string, { courseId, days = 14, overdue = 
     if (quiz.timeclose !== undefined && include(quiz.timeclose, !!attempts && !(attempts.attempts ?? []).some((a) => a.state === 'finished'))) {
       result.push({ ...base, type: 'quiz', due: quiz.timeclose, dueLocal: localTime(quiz.timeclose),
         state: active[0]?.state ?? (attempts ? 'not-in-progress' : 'unknown'), overdue: quiz.timeclose < now,
-        deadlineComplete: !!attempts });
+        deadlineComplete: !!attempts && active.length === 0 });
     }
     for (const attempt of active) {
-      const access = await read<WithWarnings & { endtime?: number }>(token, 'mod_quiz_get_attempt_access_information', { quizid: quiz.id, attemptid: attempt.id }, warnings);
-      if (!access || access.endtime === undefined) {
-        if (access) warn(warnings, 'quiz-attempt', attempt.id, 'Không xác định được hạn của lượt đang làm.');
-        continue;
-      }
-      if (include(access.endtime, true)) result.push({ ...base, type: 'quiz-attempt', attemptid: attempt.id,
-        due: access.endtime, dueLocal: localTime(access.endtime), state: attempt.state, overdue: access.endtime < now,
-        deadlineComplete: true });
+      // Moodle's attempt-access endpoint processes expiry and can submit the attempt.
+      warn(warnings, 'quiz-attempt', attempt.id,
+        `Lượt ${attempt.id} (${attempt.state}): hạn chính xác chưa xác định; API lấy hạn có thể thay đổi hoặc nộp bài. Xem trên website.`);
     }
   }
   result.sort((a, b) => a.due - b.due);
