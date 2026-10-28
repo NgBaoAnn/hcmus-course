@@ -4,10 +4,11 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { api, decodeAppToken, publicConfig, SITE } from './moodle.mjs';
+import { show } from './terminal.mjs';
 
 const configDir = join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'course-cli-spike');
 const authFile = join(configDir, 'auth.json');
-const print = (value) => console.log(JSON.stringify(value, null, 2));
+const print = (value) => show(value, { json: true });
 const launchPath = '/admin/tool/mobile/launch.php';
 
 async function login() {
@@ -66,7 +67,7 @@ async function login() {
   }
 }
 
-async function probe() {
+async function readToken() {
   let token;
   try {
     ({ token } = JSON.parse(await readFile(authFile, 'utf8')));
@@ -74,6 +75,11 @@ async function probe() {
   } catch {
     throw new Error('Chưa có token hợp lệ. Chạy: node course.mjs auth login');
   }
+  return token;
+}
+
+async function probe() {
+  const token = await readToken();
   const info = await api(token, 'core_webservice_get_site_info');
   const names = new Set(info.functions?.map((fn) => fn.name));
   const capabilities = Object.fromEntries([
@@ -108,7 +114,8 @@ async function probe() {
 }
 
 async function main() {
-  const command = process.argv.slice(2).join(' ');
+  const args = process.argv.slice(2);
+  const command = args.join(' ');
   if (command === 'doctor') {
     const config = await publicConfig();
     print({ site: SITE, name: config.sitename, webservices: config.enablewebservices,
@@ -122,8 +129,8 @@ async function main() {
   } else if (command === 'probe') {
     await probe();
   } else {
-    console.log('Bản thử chỉ đọc dữ liệu:\n  node course.mjs doctor\n  node course.mjs auth login\n  node course.mjs probe\n  node course.mjs auth logout');
-    if (command && command !== '--help') process.exitCode = 1;
+    if (command && command !== '--help') throw new Error(`Lệnh không hợp lệ: ${command}`);
+    console.log('Bản thử chỉ đọc dữ liệu:\n  course doctor\n  course auth login\n  course probe\n  course auth logout');
   }
 }
 
