@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { api, decodeAppToken, publicConfig, SITE, type SiteInfo } from './moodle.js';
+import { listAssignments, viewAssignment, assignmentStatus, downloadAssignment, submitAssignment } from './assignments.js';
 import { render, requireId, show } from './terminal.js';
 import { listCourses, viewCourse, deadlines, grades, notices, type Course, type AssignmentsResponse } from './student.js';
 
@@ -118,7 +119,36 @@ async function probe() {
 async function main() {
   const args = process.argv.slice(2);
   const command = args.join(' ');
-  if (['list', 'view', 'deadlines', 'grades', 'notices'].includes(args[0])) {
+  if (args[0] === 'assignment') {
+    const action = args[1];
+    if (!['list', 'view', 'status', 'download', 'submit'].includes(action)) throw new Error('Lệnh assignment không hợp lệ.');
+    const options = {
+      ...(action !== 'submit' ? { json: { type: 'boolean' as const } } : {}),
+      ...(action === 'list' ? { course: { type: 'string' as const } } : {}),
+      ...(action === 'download' ? { output: { type: 'string' as const } } : {}),
+      ...(action === 'submit' ? { 'text-file': { type: 'string' as const }, draft: { type: 'boolean' as const } } : {}),
+    };
+    const { values, positionals } = parseArgs({ args: args.slice(2), options, allowPositionals: true });
+    if (action === 'list' ? positionals.length !== 0 : action === 'submit' ? positionals.length < 1 : positionals.length !== 1) {
+      throw new Error('Đối số assignment không hợp lệ.');
+    }
+    const id = action === 'list' ? undefined : requireId(positionals[0], 'Assignment ID');
+    const courseId = values.course === undefined ? undefined : requireId(String(values.course), 'Course ID');
+    const token = await readToken();
+    const result = action === 'list' ? await listAssignments(token, courseId)
+      : action === 'view' ? await viewAssignment(token, id)
+      : action === 'status' ? await assignmentStatus(token, id)
+      : action === 'download' ? await downloadAssignment(token, id, typeof values.output === 'string' ? values.output : undefined)
+      : await submitAssignment(token, id, { files: positionals.slice(1), textFile: typeof values['text-file'] === 'string' ? values['text-file'] : undefined, draft: values.draft === true });
+    for (const warning of result.warnings ?? []) console.error(`Cảnh báo: ${render(warning.message || warning.warningcode)}`);
+    if (values.json) show(result, { json: true });
+    else if ('assignments' in result) show(result.assignments.map(a => `${a.id}\t${a.name}\nMôn: ${a.coursename} (${a.courseid}); hạn (Unix): ${a.duedate}\n${a.webUrl}`).join('\n\n') || 'Không có bài tập.');
+    else if ('introText' in result) show(`${result.name} (${result.id})\n${result.introText}\n${JSON.stringify({ files: result.introattachments, configs: result.configs, due: result.duedate, cutoff: result.cutoffdate, status: result.status }, null, 2)}\n${result.webUrl}`);
+    else if ('state' in result) {
+      show(`${result.state}: ${result.message}\n${result.pendingMembers?.length ? `Thành viên còn cần xác nhận: ${result.pendingMembers.join(', ')}\n` : ''}${result.webUrl}`);
+      if (result.state === 'uncertain' || (!values.draft && result.state !== 'submitted')) process.exitCode = 1;
+    } else show(result);
+  } else if (['list', 'view', 'deadlines', 'grades', 'notices'].includes(args[0])) {
     const action = args[0];
     const options = {
       json: { type: 'boolean' as const },
@@ -160,7 +190,7 @@ async function main() {
     await probe();
   } else {
     if (command && command !== '--help') throw new Error(`Lệnh không hợp lệ: ${command}`);
-    console.log('Course CLI:\n  course doctor\n  course auth login\n  course probe\n  course auth logout\n  course list [--json]\n  course view <course-id> [--json]\n  course deadlines [--course <course-id>] [--days <positive-integer>] [--overdue] [--json]\n  course grades --course <course-id> [--json]\n  course notices --course <course-id> [--json]');
+    console.log('Course CLI:\n  course doctor\n  course auth login\n  course probe\n  course auth logout\n  course list [--json]\n  course view <course-id> [--json]\n  course deadlines [--course <course-id>] [--days <positive-integer>] [--overdue] [--json]\n  course grades --course <course-id> [--json]\n  course notices --course <course-id> [--json]\n  course assignment list [--course <course-id>] [--json]\n  course assignment view|status <assignment-id> [--json]\n  course assignment download <assignment-id> [--output <directory>] [--json]\n  course assignment submit <assignment-id> [files...] [--text-file <path>] [--draft]');
   }
 }
 
