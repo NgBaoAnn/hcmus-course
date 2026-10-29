@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { confirm, formatCards, formatLocalDate, formatStatus, render, requireId, show } from './terminal.js';
+import { confirm, formatCards, formatLocalDate, formatStatus, render, requireId, selectItem, show } from './terminal.js';
 
 test('IDs must be positive safe integers', () => {
   assert.equal(requireId('42', 'quiz'), 42);
@@ -75,6 +75,28 @@ test('known Moodle statuses use student-friendly labels and unknown states survi
 
 test('confirmation fails closed without an interactive terminal', async () => {
   assert.equal(await confirm('Continue?'), false);
+});
+
+test('picker paginates, validates choices and cancels without selecting', async t => {
+  const input = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
+  const output = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY');
+  const lines: string[] = [];
+  t.mock.method(console, 'error', (line: string) => lines.push(line));
+  try {
+    Object.defineProperty(process.stdin, 'isTTY', { configurable: true, value: true });
+    Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: true });
+    const items = Array.from({ length: 12 }, (_, index) => ({ id: index + 20, label: `Môn ${index + 1}` }));
+    const answers = ['n', '3', 'p', '1'];
+    assert.equal((await selectItem('Môn học', items, async () => answers.shift() ?? '')).id, 20);
+    assert.ok(lines.some(line => line.includes('Trang 2/2')));
+    assert.ok(lines.some(line => line.includes('Lựa chọn không hợp lệ')));
+    await assert.rejects(selectItem('Môn học', items, async () => '0'), /Đã hủy/);
+  } finally {
+    if (input) Object.defineProperty(process.stdin, 'isTTY', input);
+    else delete (process.stdin as { isTTY?: boolean }).isTTY;
+    if (output) Object.defineProperty(process.stdout, 'isTTY', output);
+    else delete (process.stdout as { isTTY?: boolean }).isTTY;
+  }
 });
 
 test('JSON output escapes untrusted control characters', (t) => {

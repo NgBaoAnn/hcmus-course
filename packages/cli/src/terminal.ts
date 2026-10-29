@@ -140,6 +140,26 @@ export async function confirm(message: string): Promise<boolean> {
   return answer.trim().toLowerCase() === 'yes';
 }
 
+export async function selectItem<T extends { id: number; label: string }>(title: string, items: T[], prompt = ask): Promise<T> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error('Cần terminal tương tác để chọn mục; hãy truyền ID khi dùng trong script.');
+  if (!items.length) throw new Error(`Không có ${title.toLowerCase()} nào để chọn; hãy truyền ID nếu bạn biết.`);
+  let page = 0;
+  const size = 10;
+  while (true) {
+    const start = page * size;
+    const shown = items.slice(start, start + size);
+    console.error(formatCards(title, [{ title: `Trang ${page + 1}/${Math.ceil(items.length / size)}`,
+      lines: shown.map((item, index) => `${index + 1}. ${item.label} · ID ${item.id}`) }]));
+    const answer = (await prompt('Chọn số thứ tự, n/p để chuyển trang, 0 để hủy:')).trim().toLowerCase();
+    if (answer === '0') throw new Error('Đã hủy chọn mục.');
+    if (answer === 'n' && start + size < items.length) { page++; continue; }
+    if (answer === 'p' && page > 0) { page--; continue; }
+    const index = Number(answer);
+    if (/^[1-9]\d*$/.test(answer) && index <= shown.length) return shown[index - 1];
+    console.error('Lựa chọn không hợp lệ.');
+  }
+}
+
 export function show(value: unknown, { json = false }: { json?: boolean } = {}): void {
   console.log(json || typeof value !== 'string' ? JSON.stringify(value, null, 2) : render(value));
 }

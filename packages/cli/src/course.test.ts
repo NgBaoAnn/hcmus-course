@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { execFile, spawnSync } from 'node:child_process';
+import { execFile, spawn, spawnSync } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -131,6 +131,85 @@ test('interactive list lets the student choose all enrolled courses', async t =>
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Chọn phạm vi môn học/);
   assert.match(result.stdout, /Tất cả môn học · 2/);
+});
+test('missing IDs open a numbered picker in a terminal while explicit IDs remain valid', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'course-cli-pick-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(join(directory, 'course-cli-spike'));
+  await writeFile(join(directory, 'course-cli-spike', 'auth.json'), JSON.stringify({ token }));
+  const responses = {
+    core_webservice_get_site_info: user,
+    core_enrol_get_users_courses: courses,
+    core_course_get_contents: [{ id: 1, name: 'Week 1', modules: [{ id: 42, name: 'Slides', modname: 'resource' }] }],
+    mod_forum_get_forums_by_courses: [{ id: 8, course: 12, name: 'Q&A', type: 'general' }],
+    mod_forum_get_forum_discussions: { discussions: [{ id: 9, discussion: 10, subject: 'Question' }] },
+    core_message_get_conversations: { conversations: [{ id: 20, name: 'Classmate' }] },
+    core_message_get_conversation_messages: { messages: [{ id: 30, text: 'Hello' }] },
+  };
+  const preload = `process.stdin.isTTY = true; process.stdout.isTTY = true;
+    const responses = ${JSON.stringify(responses)};
+    globalThis.fetch = async (_url, { body }) => new Response(JSON.stringify(responses[body.get('wsfunction')]));`;
+  const run = (args: string[], input?: string) => spawnSync(process.execPath,
+    ['--import', `data:text/javascript,${encodeURIComponent(preload)}`, new URL('./course.js', import.meta.url).pathname, ...args],
+    { env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' }, input, encoding: 'utf8', timeout: 5000 });
+  for (const [args, expected] of [
+    [['view'], 'Week 1'], [['materials', 'list'], 'Slides'],
+    [['forum', 'discussions'], 'Question'], [['messages', 'view'], 'Hello'],
+  ] as const) {
+    const result = run([...args], '1\n');
+    assert.equal(result.status, 0, `${args.join(' ')}: ${result.stderr}`);
+    assert.match(result.stderr, /Chọn số thứ tự/);
+    assert.match(result.stdout, new RegExp(expected));
+  }
+  const explicit = run(['view', '12']);
+  assert.equal(explicit.status, 0, explicit.stderr);
+  assert.doesNotMatch(explicit.stderr, /Chọn số thứ tự/);
+});
+test('missing IDs in scripts fail before auth or Moodle requests', async t => {
+  for (const [args, label] of [
+    [['view'], 'Course ID'], [['view', '--json'], 'Course ID'],
+    [['forum', 'discussions'], 'Forum ID'], [['messages', 'view'], 'Conversation ID'],
+    [['quiz', 'resume'], 'Attempt ID'], [['assignment', 'submit'], 'Assignment ID'],
+  ] as const) {
+    const result = await cli(t, [...args]);
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, new RegExp(label));
+    assert.doesNotMatch(result.stderr, /UNEXPECTED_API|Chưa có token/);
+    assert.equal(result.stdout, '');
+  }
+});
+test('forum picker walks from forum to discussion with two user choices', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'course-cli-forum-pick-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(join(directory, 'course-cli-spike'));
+  await writeFile(join(directory, 'course-cli-spike', 'auth.json'), JSON.stringify({ token }));
+  const responses = {
+    core_webservice_get_site_info: user,
+    core_enrol_get_users_courses: courses,
+    mod_forum_get_forums_by_courses: [{ id: 8, course: 12, name: 'Q&A', type: 'general' }],
+    mod_forum_get_forum_discussions: { discussions: [{ id: 9, discussion: 10, subject: 'Question' }] },
+    mod_forum_get_discussion_posts: { forumid: 8, courseid: 12, posts: [{ id: 11, subject: 'Question', message: '<p>Answer</p>' }] },
+  };
+  const preload = `process.stdin.isTTY = true; process.stdout.isTTY = true;
+    const responses = ${JSON.stringify(responses)};
+    globalThis.fetch = async (_url, { body }) => new Response(JSON.stringify(responses[body.get('wsfunction')]));`;
+  const child = spawn(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
+    new URL('./course.js', import.meta.url).pathname, 'forum', 'view'],
+  { env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' } });
+  let stderr = '';
+  let stdout = '';
+  let prompts = 0;
+  child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
+  child.stderr.setEncoding('utf8').on('data', chunk => {
+    stderr += chunk;
+    while ((stderr.match(/Chọn số thứ tự/g) ?? []).length > prompts) { prompts++; child.stdin.write('1\n'); }
+  });
+  const timer = setTimeout(() => child.kill(), 5000);
+  const code = await new Promise<number | null>(resolve => child.on('close', resolve));
+  clearTimeout(timer);
+  assert.equal(code, 0, stderr);
+  assert.equal(prompts, 2);
+  assert.match(stdout, /Answer/);
 });
 test('new read commands route through Moodle and render readable cards', async t => {
   const responses = {

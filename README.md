@@ -55,6 +55,13 @@ quyền.
 
 ## Lệnh sử dụng
 
+Khi chạy trong terminal, có thể bỏ ID bắt buộc để chọn từ danh sách phân trang.
+Nhập số thứ tự, `n`/`p` để chuyển trang, hoặc `0` để hủy. Ví dụ `course view`,
+`course forum view`, `course messages view` và `course assignment submit` sẽ dẫn
+qua các bước chọn cần thiết. Với lệnh ghi, CLI còn hỏi các giá trị thiếu rồi yêu
+cầu xác nhận `yes` trước khi gửi. Khi dùng trong script, agent hoặc `--json`, hãy
+truyền ID và tùy chọn đầy đủ; CLI không mở bộ chọn và không đổi định dạng output.
+
 ```sh
 course list
 course list --all
@@ -137,6 +144,8 @@ ngày tới; ký hiệu `+` báo còn mục phía sau. `favourites` xem hoặc �
 diễn đàn, `forum discussions` xem chủ đề theo trang 20 mục, `forum view` đọc bài
 viết; `create/reply` gửi văn bản từ file, `subscribe/favourite` đổi theo dõi và
 yêu thích chủ đề. Các lệnh ghi cần terminal tương tác và xác nhận `yes`.
+Khi chọn chủ đề trong forum, bộ chọn hiển thị 20 chủ đề mới nhất; có thể truyền
+Discussion ID trực tiếp để mở chủ đề cũ hơn.
 
 `event create` dùng thời điểm ISO 8601 có múi giờ, ví dụ `2026-11-01T09:00+07:00`.
 `calendar export` ghi file `.ics` mới trong khoảng tối đa 365 ngày tới; không ghi
