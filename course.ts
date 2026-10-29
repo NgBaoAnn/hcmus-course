@@ -211,6 +211,10 @@ async function main() {
       microsoft: config.identityproviders?.some((provider) => provider.name === 'Microsoft') });
   } else if (command === 'auth login') {
     await login();
+  } else if (command === 'auth status') {
+    const info = await api<SiteInfo>(await readToken(), 'core_webservice_get_site_info');
+    requireId(String(info.userid), 'User ID');
+    print({ authenticated: true, userid: info.userid, fullname: info.fullname });
   } else if (command === 'auth logout') {
     await rm(authFile, { force: true });
     console.log('Đã xóa token trên máy. Token phía Moodle chưa bị thu hồi.');
@@ -218,7 +222,7 @@ async function main() {
     await probe();
   } else {
     if (command && command !== '--help') throw new Error(`Lệnh không hợp lệ: ${command}`);
-    console.log('Course CLI:\n  course doctor\n  course auth login\n  course probe\n  course auth logout\n  course list [--json]\n  course view <course-id> [--json]\n  course deadlines [--course <course-id>] [--days <positive-integer>] [--overdue] [--json]\n  course grades --course <course-id> [--json]\n  course notices --course <course-id> [--json]\n  course assignment list [--course <course-id>] [--json]\n  course assignment view|status <assignment-id> [--json]\n  course assignment download <assignment-id> [--output <directory>] [--json]\n  course assignment submit <assignment-id> [files...] [--text-file <path>] [--draft]\n  course quiz list [--course <course-id>] [--json]\n  course quiz view|attempts <quiz-id> [--json]\n  course quiz status|review <attempt-id> [--json]\n  course quiz start <quiz-id>\n  course quiz resume|submit <attempt-id>');
+    console.log('Course CLI:\n  course doctor\n  course auth login\n  course auth status\n  course probe\n  course auth logout\n  course list [--json]\n  course view <course-id> [--json]\n  course deadlines [--course <course-id>] [--days <positive-integer>] [--overdue] [--json]\n  course grades --course <course-id> [--json]\n  course notices --course <course-id> [--json]\n  course assignment list [--course <course-id>] [--json]\n  course assignment view|status <assignment-id> [--json]\n  course assignment download <assignment-id> [--output <directory>] [--json]\n  course assignment submit <assignment-id> [files...] [--text-file <path>] [--draft]\n  course quiz list [--course <course-id>] [--json]\n  course quiz view|attempts <quiz-id> [--json]\n  course quiz status|review <attempt-id> [--json]\n  course quiz start <quiz-id>\n  course quiz resume|submit <attempt-id>');
   }
 }
 
