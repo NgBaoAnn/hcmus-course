@@ -341,6 +341,15 @@ test('submit detects an autosaved answer change even with unchanged sequence met
   assert.equal(result.state, 'conflict'); assert.equal(f.calls.some(c => c.name === 'mod_quiz_process_attempt'), false);
 });
 
+test('submit ignores per-render Moodle script IDs when question answers are unchanged', async t => {
+  const f = await setup(t); let render = 0;
+  f.hooks.mod_quiz_get_attempt_summary = () => ({ questions: f.pages.get(0)!.map(q => ({ ...q,
+    html: `${q.html}<script>M.util.js_pending('pending-${++render}')</script>` })), totalunanswered: 1, warnings: [] });
+  const result = await submitQuiz(token, 8, { confirm: async () => true });
+  assert.equal(result.state, 'finished');
+  assert.equal(f.calls.filter(c => c.name === 'mod_quiz_process_attempt').length, 1);
+});
+
 test('matching prompt pairs every rendered stem with its own control and shuffled choices', async t => {
   const f = await setup(t);
   const q = question('match', `<div class="ablock"><table class="answer" role="presentation"><tbody>

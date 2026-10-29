@@ -450,7 +450,11 @@ export async function submitQuiz(token: string, id: Id, options: Options = {}): 
   validateAccess(quiz, access);
   const preflight = await password(access, options.ask ?? ask);
   const readSummary = async () => checked(await api<Summary>(token, 'mod_quiz_get_attempt_summary', { attemptid: attempt.id, ...preflight }));
-  const signature = (s: Summary) => JSON.stringify([s.totalunanswered, s.questions.map(q => [q.slot, q.sequencecheck, q.lastactiontime, q.hasautosavedstep, q.status, q.html])]);
+  const signature = (s: Summary) => JSON.stringify([s.totalunanswered, s.questions.map(q => {
+    const { document } = parseHTML(q.html);
+    for (const script of Array.from(document.querySelectorAll('script'))) script.remove();
+    return [q.slot, q.type, q.sequencecheck, q.lastactiontime, q.hasautosavedstep, q.status, q.stateclass, document.toString()];
+  })]);
   let summary: Summary;
   try { summary = await readSummary(); }
   catch {
