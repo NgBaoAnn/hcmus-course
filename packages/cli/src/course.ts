@@ -11,6 +11,8 @@ import { listQuizzes, viewQuiz, quizAttempts, quizStatus, startQuiz, resumeQuiz,
 import { ask, formatCards, formatLocalDate, formatStatus, render, requireId, show, withProgress } from './terminal.js';
 import { listCourses, viewCourse, deadlines, grades, notices, type Course, type AssignmentsResponse } from './student.js';
 import { calendar, progress, notifications, forums, forumDiscussions, forumView } from './campus.js';
+import { materials, downloadMaterial, markCompletion, forumWrite, inbox, conversation, sendMessage,
+  markNotification, todos, favouriteCourses, setFavouriteCourse, createPersonalEvent, exportCalendar } from './extras.js';
 
 const configDir = join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'course-cli-spike');
 const authFile = join(configDir, 'auth.json');
@@ -305,20 +307,29 @@ async function main() {
     } else show(result);
   } else if (args[0] === 'forum') {
     const action = args[1];
-    if (!['list', 'discussions', 'view'].includes(action)) throw new Error('Lệnh forum không hợp lệ.');
+    if (!['list', 'discussions', 'view', 'create', 'reply', 'subscribe', 'favourite'].includes(action)) throw new Error('Lệnh forum không hợp lệ.');
+    const readOnly = ['list', 'discussions', 'view'].includes(action);
     const { values, positionals } = parseArgs({ args: args.slice(2), allowPositionals: true, options: {
-      json: { type: 'boolean' },
+      ...(readOnly ? { json: { type: 'boolean' as const } } : {}),
       ...(action === 'list' ? { course: { type: 'string' as const } } : {}),
       ...(action === 'discussions' ? { page: { type: 'string' as const } } : {}),
+      ...(['create', 'reply'].includes(action) ? { subject: { type: 'string' as const }, 'text-file': { type: 'string' as const } } : {}),
     } });
-    if (positionals.length !== (action === 'list' ? 0 : 1)) throw new Error('Đối số forum không hợp lệ.');
+    if (positionals.length !== (action === 'list' ? 0 : ['subscribe', 'favourite'].includes(action) ? 2 : 1)) throw new Error('Đối số forum không hợp lệ.');
     const id = action === 'list' ? undefined : requireId(positionals[0], action === 'view' ? 'Discussion ID' : 'Forum ID');
     const courseId = values.course === undefined ? undefined : requireId(String(values.course), 'Course ID');
     const page = values.page === undefined ? 1 : requireId(String(values.page), 'Số trang');
     const token = await readToken();
     const load = async () => action === 'list' ? await forums(token, courseId)
-      : action === 'discussions' ? await forumDiscussions(token, id, page) : await forumView(token, id);
-    const result = values.json ? await load() : await withProgress('Đang đọc diễn đàn Moodle…', load);
+      : action === 'discussions' ? await forumDiscussions(token, id, page)
+      : action === 'view' ? await forumView(token, id)
+      : await forumWrite(token, action as 'create' | 'reply' | 'subscribe' | 'favourite', id!, {
+        subject: typeof values.subject === 'string' ? values.subject : undefined,
+        body: typeof values['text-file'] === 'string' ? await readFile(values['text-file'], 'utf8') : undefined,
+        enabled: positionals[1] === 'on' ? true : positionals[1] === 'off' ? false : undefined,
+      });
+    if (!readOnly && ['subscribe', 'favourite'].includes(action) && !['on', 'off'].includes(positionals[1])) throw new Error('Chọn on hoặc off.');
+    const result = !readOnly || values.json ? await load() : await withProgress('Đang đọc diễn đàn Moodle…', load);
     reportWarnings(result.warnings);
     if (values.json) show(result, { json: true });
     else if ('forums' in result) printCards(`Diễn đàn · ${result.forums.length}`, result.forums.map(forum => ({
@@ -329,11 +340,97 @@ async function main() {
       title: `#${d.discussion} · ${d.subject}`, lines: [`Trả lời: ${d.numreplies ?? 0} · Chưa đọc: ${d.numunread ?? 0}`,
         `Đăng lúc: ${formatLocalDate(d.created)}`, d.locked ? 'Trạng thái: Đã khóa' : '', d.messageText, d.webUrl],
     })));
+    else if ('state' in result) printCards('Diễn đàn', [{ title: formatStatus(result.state), lines: [result.webUrl ?? `Chủ đề #${result.discussionid}`] }]);
     else printCards(`Thảo luận #${result.discussionid} · ${result.posts.length} bài viết`, result.posts.map(post => ({
       title: `#${post.id} · ${post.subject}`, lines: [field('Người viết', post.author?.fullname),
         `Đăng lúc: ${formatLocalDate(post.timecreated)}`, post.messageText,
         ...(post.attachments ?? []).map(file => `Tệp: ${file.filename}${file.fileurl ? ` · ${file.fileurl}` : ''}`), post.webUrl],
     })));
+  } else if (args[0] === 'materials') {
+    const action = args[1];
+    if (!['list', 'download'].includes(action)) throw new Error('Lệnh materials không hợp lệ.');
+    const { values, positionals } = parseArgs({ args: args.slice(2), allowPositionals: true, options: {
+      course: { type: 'string' }, json: { type: 'boolean' }, output: { type: 'string' },
+    } });
+    if (positionals.length !== (action === 'list' ? 0 : 1)) throw new Error('Đối số materials không hợp lệ.');
+    if (action === 'download' && values.json || action === 'list' && values.output) throw new Error('Tùy chọn materials không hợp lệ.');
+    const courseId = requireId(String(values.course), 'Course ID');
+    const token = await readToken();
+    const result = action === 'list' ? await withProgress('Đang đọc tài liệu…', () => materials(token, courseId))
+      : await downloadMaterial(token, courseId, positionals[0], typeof values.output === 'string' ? values.output : undefined);
+    reportWarnings(result.warnings);
+    if (values.json) show(result, { json: true });
+    else if ('materials' in result) printCards(`Tài liệu · ${result.materials.length}`, result.materials.map(item => ({
+      title: `#${item.id} · ${item.name}`, lines: [`Mục: ${item.section} · Loại: ${item.type}`,
+        item.descriptionText, ...item.files.map(file => `File: ${file.filename}`), item.webUrl],
+    })));
+    else printCards('Đã tải tài liệu', result.downloaded.map(path => ({ title: path, lines: [] })));
+  } else if (args[0] === 'completion') {
+    if (!['done', 'undo'].includes(args[1]) || args.length !== 5 || args[3] !== '--course') throw new Error('Dùng: course completion done|undo <module-id> --course <course-id>');
+    const token = await readToken();
+    const result = await markCompletion(token, args[4], args[2], args[1] === 'done');
+    reportWarnings(result.warnings);
+    printCards('Tiến độ', [{ title: result.activity.name, lines: [`Trạng thái: ${result.state === 'completed' ? 'Đã hoàn thành' : 'Chưa hoàn thành'}`, result.activity.webUrl] }]);
+  } else if (args[0] === 'messages') {
+    const action = args[1];
+    if (!['inbox', 'view', 'send'].includes(action)) throw new Error('Lệnh messages không hợp lệ.');
+    const { values, positionals } = parseArgs({ args: args.slice(2), allowPositionals: true, options: {
+      json: { type: 'boolean' }, limit: { type: 'string' }, 'text-file': { type: 'string' },
+    } });
+    if (positionals.length !== (action === 'inbox' ? 0 : 1)) throw new Error('Đối số messages không hợp lệ.');
+    if (action === 'send' && (values.json || values.limit) || action !== 'send' && values['text-file']) throw new Error('Tùy chọn messages không hợp lệ.');
+    const token = await readToken();
+    const limit = values.limit === undefined ? undefined : requireId(String(values.limit), 'Giới hạn');
+    const result = action === 'inbox' ? await inbox(token, limit)
+      : action === 'view' ? await conversation(token, positionals[0], limit)
+      : await sendMessage(token, positionals[0], typeof values['text-file'] === 'string' ? await readFile(values['text-file'], 'utf8') : '');
+    reportWarnings(result.warnings);
+    if (values.json) show(result, { json: true });
+    else if ('conversations' in result) printCards(`Hội thoại · ${result.conversations.length}`, result.conversations.map(item => ({
+      title: `#${item.id} · ${item.name || item.members?.map(member => member.fullname).join(', ') || 'Hội thoại'}`,
+      lines: [`Chưa đọc: ${item.unreadcount ?? 0}`, ...(item.members ?? []).map(member => `${member.fullname} · User ID ${member.id}`)],
+    })));
+    else if ('messages' in result) printCards(`Tin nhắn · Hội thoại #${result.conversationid}`, result.messages.map(item => ({
+      title: `#${item.id} · User ID ${item.useridfrom ?? 'Không rõ'}`, lines: [`Lúc: ${formatLocalDate(item.timecreated)}`, item.messageText],
+    })));
+    else printCards('Tin nhắn', [{ title: 'Đã gửi', lines: [`Message ID: ${result.messageid}`] }]);
+  } else if (args[0] === 'notifications' && args[1] === 'read') {
+    if (args.length !== 3) throw new Error('Dùng: course notifications read <notification-id>');
+    const result = await markNotification(await readToken(), args[2]);
+    printCards('Thông báo', [{ title: `#${result.notificationid}`, lines: ['Trạng thái: Đã đọc'] }]);
+  } else if (args[0] === 'todo') {
+    const { values, positionals } = parseArgs({ args: args.slice(1), options: { days: { type: 'string' }, json: { type: 'boolean' } }, allowPositionals: true });
+    if (positionals.length) throw new Error('Đối số todo không hợp lệ.');
+    const token = await readToken();
+    const result = await withProgress('Đang đọc việc cần làm…', () => todos(token, values.days === undefined ? 30 : requireId(String(values.days), 'Số ngày')));
+    reportWarnings(result.warnings);
+    if (values.json) show(result, { json: true });
+    else printCards(`Cần làm · ${result.days} ngày tới · ${result.events.length}${result.truncated ? '+' : ''}`, result.events.map(item => ({
+      title: item.name, lines: [`Hạn: ${formatLocalDate(item.timesort)}`, item.course?.fullname || '', item.webUrl],
+    })));
+  } else if (args[0] === 'favourites') {
+    const action = args[1] ?? 'list';
+    if (!['list', 'add', 'remove'].includes(action)) throw new Error('Lệnh favourites không hợp lệ.');
+    const { values, positionals } = parseArgs({ args: args.slice(2), options: action === 'list' ? { json: { type: 'boolean' } } : {}, allowPositionals: true });
+    if (positionals.length !== (action === 'list' ? 0 : 1)) throw new Error('Đối số favourites không hợp lệ.');
+    const token = await readToken();
+    const result = action === 'list' ? await favouriteCourses(token) : await setFavouriteCourse(token, positionals[0], action === 'add');
+    if (values.json) show(result, { json: true });
+    else if ('courses' in result) printCards(`Môn yêu thích · ${result.courses.length}`, result.courses.map(item => ({ title: `#${item.id} · ${item.fullname}`, lines: [item.webUrl] })));
+    else printCards('Môn yêu thích', [{ title: `Môn #${result.courseid}`, lines: [`Trạng thái: ${result.state === 'favourite' ? 'Yêu thích' : 'Bình thường'}`] }]);
+  } else if (args[0] === 'event') {
+    if (args[1] !== 'create') throw new Error('Lệnh event không hợp lệ.');
+    const { values, positionals } = parseArgs({ args: args.slice(2), options: { name: { type: 'string' }, at: { type: 'string' }, minutes: { type: 'string' } }, allowPositionals: true });
+    if (positionals.length) throw new Error('Đối số event không hợp lệ.');
+    const result = await createPersonalEvent(await readToken(), String(values.name ?? ''), String(values.at ?? ''), String(values.minutes ?? ''));
+    reportWarnings(result.warnings);
+    printCards('Lịch cá nhân', [{ title: 'Đã tạo sự kiện', lines: [`Event ID: ${result.id}`, result.webUrl] }]);
+  } else if (args[0] === 'calendar' && args[1] === 'export') {
+    const { values, positionals } = parseArgs({ args: args.slice(2), options: { output: { type: 'string' }, days: { type: 'string' } }, allowPositionals: true });
+    if (positionals.length || typeof values.output !== 'string') throw new Error('Dùng: course calendar export --output <file.ics> [--days <số>]');
+    const result = await exportCalendar(await readToken(), values.output, values.days === undefined ? 365 : requireId(String(values.days), 'Số ngày'));
+    reportWarnings(result.warnings);
+    printCards('Xuất lịch iCal', [{ title: result.path, lines: [`Sự kiện: ${result.count}`, `Khoảng: ${result.days} ngày tới`] }]);
   } else if (['list', 'view', 'deadlines', 'grades', 'notices', 'calendar', 'progress', 'notifications'].includes(args[0])) {
     const action = args[0];
     const options = {
@@ -348,7 +445,7 @@ async function main() {
     if (positionals.length !== (action === 'view' ? 1 : 0)) throw new Error(`Đối số không hợp lệ cho course ${action}.`);
     const id = action === 'view' ? requireId(positionals[0], 'Course ID')
       : values.course !== undefined || ['grades', 'notices', 'progress'].includes(action) ? requireId(typeof values.course === 'string' ? values.course : undefined, 'Course ID') : undefined;
-    const days = values.days === undefined ? 14 : requireId(typeof values.days === 'string' ? values.days : undefined, 'Số ngày');
+    const days = values.days === undefined ? (action === 'deadlines' ? 30 : 14) : requireId(typeof values.days === 'string' ? values.days : undefined, 'Số ngày');
     const limit = values.limit === undefined ? 20 : requireId(String(values.limit), 'Giới hạn');
     const token = await readToken();
     let all = values.all === true;
@@ -461,13 +558,24 @@ async function main() {
       { title: 'Tài khoản & chẩn đoán', lines: ['course doctor', 'course auth login',
         'course auth status', 'course auth logout', 'course probe'] },
       { title: 'Môn học', lines: ['course list', 'course view &lt;course-id&gt;',
-        'course deadlines [--course &lt;course-id&gt;] [--days &lt;số-ngày&gt;] [--overdue]',
+        'course deadlines [--course &lt;course-id&gt;] [--days &lt;số-ngày&gt;] [--overdue] (mặc định 30 ngày)',
         'course grades --course &lt;course-id&gt;', 'course notices --course &lt;course-id&gt;',
         'course calendar [--course &lt;course-id&gt;] [--days &lt;số-ngày&gt;]',
-        'course progress --course &lt;course-id&gt;', 'course notifications [--limit &lt;số&gt;]'] },
+        'course calendar export --output &lt;file.ics&gt; [--days &lt;số&gt;]',
+        'course event create --name &lt;tên&gt; --at &lt;ISO-8601&gt; --minutes &lt;số&gt;',
+        'course progress --course &lt;course-id&gt;', 'course completion done|undo &lt;module-id&gt; --course &lt;course-id&gt;',
+        'course todo [--days &lt;số&gt;]', 'course favourites list|add|remove [course-id]',
+        'course notifications [--limit &lt;số&gt;]', 'course notifications read &lt;notification-id&gt;'] },
+      { title: 'Tài liệu & tin nhắn', lines: ['course materials list --course &lt;course-id&gt;',
+        'course materials download &lt;module-id&gt; --course &lt;course-id&gt; [--output &lt;thư-mục&gt;]',
+        'course messages inbox [--limit &lt;số&gt;]', 'course messages view &lt;conversation-id&gt; [--limit &lt;số&gt;]',
+        'course messages send &lt;user-id&gt; --text-file &lt;path&gt;'] },
       { title: 'Diễn đàn', lines: ['course forum list [--course &lt;course-id&gt;]',
         'course forum discussions &lt;forum-id&gt; [--page &lt;số&gt;]',
-        'course forum view &lt;discussion-id&gt;'] },
+        'course forum view &lt;discussion-id&gt;',
+        'course forum create &lt;forum-id&gt; --subject &lt;tên&gt; --text-file &lt;path&gt;',
+        'course forum reply &lt;post-id&gt; --subject &lt;tên&gt; --text-file &lt;path&gt;',
+        'course forum subscribe|favourite &lt;discussion-id&gt; on|off'] },
       { title: 'Bài tập', lines: ['course assignment list [--course &lt;course-id&gt;]',
         'course assignment view|status &lt;assignment-id&gt;',
         'course assignment download &lt;assignment-id&gt; [--output &lt;thư-mục&gt;]',

@@ -40,6 +40,7 @@ const statuses: Record<string, string> = {
   correct: 'Đúng', incorrect: 'Chưa đúng', partiallycorrect: 'Đúng một phần', needsgrading: 'Chờ chấm',
   abandoned: 'Đã bỏ', saved: 'Đã lưu', uncertain: 'Chưa xác định', conflict: 'Có xung đột', unsupported: 'Chưa hỗ trợ',
   expired: 'Hết hạn', unknown: 'Không rõ',
+  created: 'Đã tạo', enabled: 'Đã bật', disabled: 'Đã tắt', sent: 'Đã gửi',
 };
 
 export function formatCards(title: string, cards: { title: string; lines: string[] }[]): string {

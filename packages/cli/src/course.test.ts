@@ -57,8 +57,43 @@ test('CLI help includes auth status and every command group without reading auth
     const result = await cli(t, args);
     assert.equal(result.code, 0); assert.equal(result.stderr, '');
     for (const text of ['auth status', 'assignment submit', 'quiz resume', 'deadlines', 'grades', 'notices',
-      'calendar', 'progress', 'notifications', 'forum discussions']) assert.ok(result.stdout.includes(text), text);
+      'calendar export', 'event create', 'progress', 'completion done|undo', 'notifications read',
+      'forum create', 'forum reply', 'materials list', 'messages inbox', 'todo', 'favourites']) assert.ok(result.stdout.includes(text), text);
     assert.doesNotMatch(result.stdout, /--json/);
+  }
+});
+test('new read command routes keep their card output and reject write commands without a terminal', async t => {
+  const responses = {
+    core_webservice_get_site_info: user,
+    core_course_get_contents: [{ id: 1, name: 'Week', modules: [{ id: 42, name: 'Slides', modname: 'resource' }] }],
+    core_message_get_conversations: { conversations: [{ id: 8, name: 'Friend' }] },
+    core_calendar_get_action_events_by_timesort: { events: [{ id: 9, name: 'Submit', timesort: 1800000000 }] },
+    block_starredcourses_get_starred_courses: [{ id: 12, fullname: 'Algorithms' }],
+    mod_forum_can_add_discussion: { status: true },
+  };
+  for (const [args, expected] of [
+    [['materials', 'list', '--course', '12'], 'Slides'],
+    [['messages', 'inbox'], 'Friend'],
+    [['todo'], 'Submit'],
+    [['favourites', 'list'], 'Algorithms'],
+  ] as const) {
+    const result = await cli(t, [...args], responses, true);
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, new RegExp(expected));
+  }
+  const directory = await mkdtemp(join(tmpdir(), 'course-text-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, 'message.txt');
+  await writeFile(path, 'Hello');
+  for (const args of [
+    ['forum', 'create', '8', '--subject', 'Hi', '--text-file', path],
+    ['messages', 'send', '8', '--text-file', path],
+    ['event', 'create', '--name', 'Study', '--at', '2026-11-01T09:00+07:00', '--minutes', '30'],
+  ]) {
+    const result = await cli(t, args, responses, true);
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Đã hủy/);
+    assert.doesNotMatch(result.stderr, /UNEXPECTED_API/);
   }
 });
 test('noninteractive list defaults to current year and --all includes older enrolled courses', async t => {
@@ -255,7 +290,7 @@ test('deadlines print identical Moodle access warnings once with a count', async
   }, true);
   assert.equal(result.code, 0, result.stderr);
   assert.equal(result.stderr.trim(), 'Cảnh báo (36): No access rights in module context');
-  assert.match(result.stdout, /14 ngày tới/);
+  assert.match(result.stdout, /30 ngày tới/);
 });
 test('CLI reports Moodle grade denial on stderr without fabricating grades', async t => {
   const result = await cli(t, ['grades', '--course', '12', '--json'], {

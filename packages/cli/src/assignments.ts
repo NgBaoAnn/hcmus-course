@@ -83,10 +83,8 @@ function fileUrl(value: string | undefined) {
   return url;
 }
 
-export async function downloadAssignment(token: string, id: InputId, directory = process.cwd()) {
+export async function downloadMoodleFiles(token: string, files: { filename: string; fileurl?: string; filesize?: number }[], directory = process.cwd()) {
   if (directory.includes(token)) throw new Error('Thư mục không an toàn.');
-  const assignment = await viewAssignment(token, id);
-  const files = assignment.introattachments ?? [];
   const names = new Set<string>();
   for (const file of files) {
     safeName(file.filename, token);
@@ -108,13 +106,19 @@ export async function downloadAssignment(token: string, id: InputId, directory =
       if (!response.ok || !response.body) throw new Error();
       let bytes = 0;
       for await (const chunk of response.body) { await handle.writeFile(chunk); bytes += chunk.length; }
-      if (bytes !== file.filesize) throw new Error();
+      if (file.filesize !== undefined && bytes !== file.filesize) throw new Error();
       complete = true;
       downloaded.push(destination);
     } catch { throw new Error(`Tải file thất bại; đã xóa file tải dở. Đã tải ${downloaded.length} file trước đó.`); }
     finally { await handle.close(); if (!complete) await rm(destination, { force: true }); }
   }
-  return { downloaded, warnings: assignment.warnings };
+  return downloaded;
+}
+
+export async function downloadAssignment(token: string, id: InputId, directory = process.cwd()) {
+  if (directory.includes(token)) throw new Error('Thư mục không an toàn.');
+  const assignment = await viewAssignment(token, id);
+  return { downloaded: await downloadMoodleFiles(token, assignment.introattachments ?? [], directory), warnings: assignment.warnings };
 }
 
 export async function submitAssignment(token: string, id: InputId, options: SubmitOptions = {}) {

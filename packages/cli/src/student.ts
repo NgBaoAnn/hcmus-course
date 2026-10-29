@@ -19,7 +19,7 @@ export interface AssignmentsResponse extends WithWarnings {
 }
 interface CourseModule {
   id: number; name: string; modname: string; url?: string; description?: string;
-  contents?: { filename: string; fileurl?: string }[];
+  contents?: { filename: string; fileurl?: string; filesize?: number }[];
 }
 interface CourseSection { id: number; name: string; summary?: string; modules?: CourseModule[] }
 interface SubmissionStatus extends WithWarnings {
@@ -106,7 +106,7 @@ export async function viewCourse(token: string, id: InputId) {
   };
 }
 
-export async function deadlines(token: string, { courseId, days = 14, overdue = false }: DeadlineOptions = {}) {
+export async function deadlines(token: string, { courseId, days = 30, overdue = false }: DeadlineOptions = {}) {
   if (courseId !== undefined) courseId = requireId(String(courseId), 'Course ID');
   days = requireId(String(days), 'Số ngày');
   if (!Number.isSafeInteger(days * 86400)) throw new Error('Số ngày quá lớn.');

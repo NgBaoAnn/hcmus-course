@@ -100,18 +100,19 @@ test('deadlines use individual/group extensions, distinguish cutoff, and exclude
   assert.equal(result.deadlines[0].overdue, true);
 });
 
-test('deadline window defaults to 14 days and retains quiz close dates without processing attempts', async (t) => {
+test('deadline window defaults to 30 days and retains quiz close dates without processing attempts', async (t) => {
   const calls = fixture(t, {
     mod_quiz_get_quizzes_by_courses: { quizzes: [{ id: 20, course: 12, name: 'Quiz', timeclose: now + day * 20, attempts: 3 }] },
     mod_quiz_get_user_attempts: { attempts: [{ id: 21, state: 'inprogress', attempt: 1 }], warnings: [] },
   });
   const result = await deadlines(token, { courseId: 12 });
-  assert.equal(result.deadlines.length, 0);
+  assert.equal(result.deadlines.length, 1);
   assert.equal(result.warnings[0]?.item, 'quiz-attempt');
   assert.equal(result.warnings[0]?.itemid, 21);
   assert.match(result.warnings[0]?.message ?? '', /hạn chính xác.*chưa xác định/);
-  const wider = await deadlines(token, { courseId: 12, days: 30 });
-  const closing = wider.deadlines.find((d) => d.type === 'quiz');
+  const shorter = await deadlines(token, { courseId: 12, days: 14 });
+  assert.equal(shorter.deadlines.length, 0);
+  const closing = result.deadlines.find((d) => d.type === 'quiz');
   assert.ok(closing);
   assert.equal(closing.due, now + day * 20);
   assert.equal(closing.attemptsRemaining, 2);
@@ -126,7 +127,7 @@ test('deadlines skip far-future assignments and bound concurrent status reads', 
   const calls = fixture(t, {
     mod_assign_get_assignments: { courses: [{ id: 12, assignments: [
       ...Array.from({ length: 15 }, (_, i) => ({ id: i + 1, name: `Past ${i}`, duedate: now - day })),
-      { id: 99, name: 'Far future', duedate: now + 30 * day },
+      { id: 99, name: 'Far future', duedate: now + 31 * day },
     ] }], warnings: [] },
     mod_assign_get_submission_status: async () => {
       active++;

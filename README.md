@@ -53,7 +53,7 @@ khi hết hạn chạy lại `auth login`. `course auth logout` xóa token và h
 máy, không thu hồi token phía Moodle; dùng trang security keys của Moodle nếu có
 quyền.
 
-## Lệnh đọc
+## Lệnh sử dụng
 
 ```sh
 course list
@@ -70,11 +70,26 @@ course quiz status <attempt-id>
 course quiz review <attempt-id>
 course deadlines [--course <course-id>] [--days <positive-integer>] [--overdue]
 course calendar [--course <course-id>] [--days <positive-integer>]
+course calendar export --output <file.ics> [--days <positive-integer>]
+course event create --name <name> --at <ISO-8601-with-timezone> --minutes <positive-integer>
 course progress --course <course-id>
+course completion done|undo <module-id> --course <course-id>
+course todo [--days <positive-integer>]
+course favourites list
+course favourites add|remove <course-id>
 course notifications [--limit <positive-integer>]
+course notifications read <notification-id>
+course materials list --course <course-id>
+course materials download <module-id> --course <course-id> [--output <directory>]
+course messages inbox [--limit <positive-integer>]
+course messages view <conversation-id> [--limit <positive-integer>]
+course messages send <user-id> --text-file <path>
 course forum list [--course <course-id>]
 course forum discussions <forum-id> [--page <positive-integer>]
 course forum view <discussion-id>
+course forum create <forum-id> --subject <subject> --text-file <path>
+course forum reply <post-id> --subject <subject> --text-file <path>
+course forum subscribe|favourite <discussion-id> on|off
 course grades --course <course-id>
 course notices --course <course-id>
 ```
@@ -83,7 +98,9 @@ Các ID đều là số nguyên dương và **khác loại**: Course ID lấy t�
 ID từ `assignment list`, Quiz ID từ `quiz list`, Attempt ID từ `quiz attempts`.
 Course-module ID nằm trong link website (`view.php?id=...`), không dùng thay
 Assignment ID hay Quiz ID. `quiz resume/status/submit/review` nhận **Attempt ID**.
-Forum ID lấy từ `forum list`; Discussion ID lấy từ `forum discussions`.
+Forum ID lấy từ `forum list`; Discussion ID lấy từ `forum discussions`. Post ID lấy
+từ `forum view`, Module ID từ `progress` hoặc `materials list`; User ID người nhận
+từ Moodle hoặc danh sách hội thoại.
 
 `course list` hỏi chọn năm học hiện tại hoặc tất cả môn khi chạy trong terminal.
 Nhấn Enter để chọn năm học hiện tại; khi chạy không tương tác, lệnh cũng dùng
@@ -101,7 +118,7 @@ thái `submitted` và thành viên nhóm còn cần xác nhận.
 mục hiện tại. Không tự tải mọi link trong đề, không giải nén và không ghi đè file
 đã có. Khi lỗi, file tải dở bị xóa; file đã tải xong trước đó được giữ lại.
 
-`deadlines` mặc định 14 ngày tới; `--overdue` thêm bài quá hạn chưa nộp theo trạng
+`deadlines` mặc định 30 ngày tới; `--overdue` thêm bài quá hạn chưa nộp theo trạng
 thái đọc được. Hạn Assignment áp dụng gia hạn cá nhân/nhóm; due date và cutoff
 (hạn cuối nhận bài) là hai trường riêng. Không có ngày không có nghĩa là hết hạn.
 Thời gian định dạng theo `Asia/Ho_Chi_Minh` (UTC+07:00).
@@ -111,9 +128,19 @@ Hạn đóng quiz và số lượt còn lại chỉ có khi API cung cấp đủ
 chỉ xem một môn, `--days` tối đa 365. Đây là lịch Moodle, có thể chứa những sự kiện
 khác ngoài hạn Assignment/Quiz. `progress` xem hoạt động có theo dõi hoàn thành
 trong một môn, gồm trạng thái và liên kết. `notifications` đọc tối đa 20 thông báo
-mới nhất, `--limit` tối đa 100; lệnh không đánh dấu đã đọc. `forum list` liệt kê
-diễn đàn, `forum discussions` xem chủ đề theo trang 20 mục, và `forum view` đọc bài
-viết, phản hồi, file đính kèm. Các lệnh diễn đàn không ghi bài hay đánh dấu đã đọc.
+mới nhất, `--limit` tối đa 100; `notifications read` đánh dấu một thông báo đã đọc.
+`materials list` xem tài nguyên trong môn; `materials download` chỉ tải file Moodle
+cùng host, không tự tải link ngoài. `completion done|undo` chỉ hỗ trợ hoạt động
+được cấu hình đánh dấu thủ công. `todo` xem tối đa 50 việc có hành động trong 30
+ngày tới; ký hiệu `+` báo còn mục phía sau. `favourites` xem hoặc đổi môn yêu thích.
+`messages` xem hội thoại, đọc tin và gửi tin văn bản từ file. `forum list` liệt kê
+diễn đàn, `forum discussions` xem chủ đề theo trang 20 mục, `forum view` đọc bài
+viết; `create/reply` gửi văn bản từ file, `subscribe/favourite` đổi theo dõi và
+yêu thích chủ đề. Các lệnh ghi cần terminal tương tác và xác nhận `yes`.
+
+`event create` dùng thời điểm ISO 8601 có múi giờ, ví dụ `2026-11-01T09:00+07:00`.
+`calendar export` ghi file `.ics` mới trong khoảng tối đa 365 ngày tới; không ghi
+đè file có sẵn. Đây là bản chụp lịch tại thời điểm chạy, không tự đồng bộ.
 
 **Giới hạn chỉ đọc của quiz:** `list/view/attempts/status/review` và `deadlines`
 không gọi API có thể xử lý hết giờ. Vì Moodle có thể tự nộp khi gọi API lấy dữ liệu,
