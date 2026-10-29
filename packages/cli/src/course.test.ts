@@ -19,7 +19,7 @@ async function cliWithDirectory(directory: string, args: string[], preload: stri
     return { stdout: result.stdout, stderr: result.stderr, code: result.code };
   }
 }
-async function cli(t: TestContext, args: string[], responses: Record<string, unknown> = {}, authenticated = false) {
+async function cli(t: TestContext, args: string[], responses: Record<string, unknown> = {}, authenticated = false, humanOutput = false) {
   const directory = await mkdtemp(join(tmpdir(), 'course-cli-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   if (authenticated) {
@@ -27,7 +27,7 @@ async function cli(t: TestContext, args: string[], responses: Record<string, unk
     await writeFile(join(directory, 'course-cli-spike', 'auth.json'), JSON.stringify({ token }), { mode: 0o600 });
   }
   // Only the external network is replaced: argument parsing, token IO and all modules run normally.
-  const preload = `const responses = ${JSON.stringify(responses)};
+  const preload = `${humanOutput ? 'process.stdout.isTTY = true;' : ''} const responses = ${JSON.stringify(responses)};
     globalThis.fetch = async (_url, options) => {
       const name = options?.body instanceof URLSearchParams ? options.body.get('wsfunction') : 'publicConfig';
       if (!(name in responses)) { console.error('UNEXPECTED_API:' + name); throw new Error('Unexpected API'); }
@@ -35,7 +35,7 @@ async function cli(t: TestContext, args: string[], responses: Record<string, unk
     };`;
   try {
     const result = await run(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
-      new URL('./course.js', import.meta.url).pathname, ...args], { env: { ...process.env, XDG_CONFIG_HOME: directory } });
+      new URL('./course.js', import.meta.url).pathname, ...args], { env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' } });
     return { ...result, code: 0 };
   } catch (error) {
     const result = error as Error & { stdout: string; stderr: string; code: number };
@@ -77,7 +77,7 @@ test('new read command routes keep their card output and reject write commands w
     [['todo'], 'Submit'],
     [['favourites', 'list'], 'Algorithms'],
   ] as const) {
-    const result = await cli(t, [...args], responses, true);
+    const result = await cli(t, [...args], responses, true, true);
     assert.equal(result.code, 0, result.stderr);
     assert.match(result.stdout, new RegExp(expected));
   }
@@ -228,7 +228,7 @@ test('new read commands route through Moodle and render readable cards', async t
     [['notifications'], 'Feedback'], [['forum', 'list', '--course', '12'], 'Q&A'],
     [['forum', 'discussions', '8'], 'Question'], [['forum', 'view', '11'], 'Answer'],
   ] as const) {
-    const result = await cli(t, [...args], responses, true);
+    const result = await cli(t, [...args], responses, true, true);
     assert.equal(result.code, 0, result.stderr);
     assert.match(result.stdout, /COURSE CLI/);
     assert.ok(result.stdout.includes(expected), args.join(' '));
@@ -249,7 +249,7 @@ test('human assignment lists use readable cards and local dates instead of Unix 
     core_webservice_get_site_info: user,
     core_enrol_get_users_courses: courses,
     mod_assign_get_assignments: { courses: [{ id: 12, fullname: 'Algorithms', assignments: [assignment] }], warnings: [] },
-  }, true);
+  }, true, true);
   assert.equal(result.code, 0); assert.equal(result.stderr, '');
   assert.match(result.stdout, /Bài tập/);
   assert.match(result.stdout, /Essay/);
@@ -265,7 +265,7 @@ test('human quiz reviews retain question slots, answers, and the Moodle review l
     mod_quiz_get_quizzes_by_courses: { quizzes: [quiz], warnings: [] },
     mod_quiz_get_user_attempts: { attempts: [attempt], warnings: [] },
     mod_quiz_get_attempt_review: { attempt, questions: [{ slot: 1, html: '<p>Prompt</p>', response: 'A', rightanswer: 'B', status: 'incorrect' }], grade: '5/10', warnings: [] },
-  }, true);
+  }, true, true);
   assert.equal(result.code, 0); assert.equal(result.stderr, '');
   assert.match(result.stdout, /Câu 1/);
   assert.match(result.stdout, /Trạng thái: Chưa đúng/);
@@ -279,7 +279,7 @@ test('human quiz attempt lists retain the Moodle link', async t => {
     mod_quiz_get_quizzes_by_courses: { quizzes: [quiz], warnings: [] },
     mod_quiz_get_user_attempts: { attempts: [{ id: 8, quiz: 6, userid: 7, uniqueid: 91, attempt: 1,
       state: 'inprogress', currentpage: 0, timestart: 1793232000, timemodified: 1793232100, timefinish: 0 }], warnings: [] },
-  }, true);
+  }, true, true);
   assert.equal(result.code, 0); assert.equal(result.stderr, '');
   assert.match(result.stdout, /Lượt #8 · Đang làm/);
   assert.match(result.stdout, /mod\/quiz\/view\.php\?id=60/);
@@ -359,6 +359,25 @@ test('CLI JSON retains IDs, timestamps and structured warnings while diagnostics
   assert.equal(data.assignments[0].webUrl, 'https://courses.fit.hcmus.edu.vn/mod/assign/view.php?id=40');
   assert.deepEqual(data.warnings, [warning]); assert.ok(!result.stdout.includes(token));
 });
+test('noninteractive read commands emit JSON without an explicit flag', async t => {
+  const warning = { warningcode: 'partial', message: 'Incomplete fixture data' };
+  const listed = await cli(t, ['assignment', 'list', '--course', '12'], {
+    mod_assign_get_assignments: { courses: [{ id: 12, assignments: [assignment] }], warnings: [warning] },
+  }, true);
+  assert.equal(listed.code, 0, listed.stderr);
+  assert.equal(JSON.parse(listed.stdout).assignments[0].id, 4);
+  assert.deepEqual(JSON.parse(listed.stdout).warnings, [warning]);
+
+  const deadlinesResult = await cli(t, ['deadlines'], {
+    core_webservice_get_site_info: user,
+    core_enrol_get_users_courses: courses,
+    mod_assign_get_assignments: { courses: [], warnings: [warning] },
+    mod_quiz_get_quizzes_by_courses: { quizzes: [], warnings: [] },
+  }, true);
+  assert.equal(deadlinesResult.code, 0, deadlinesResult.stderr);
+  assert.deepEqual(JSON.parse(deadlinesResult.stdout).deadlines, []);
+  assert.deepEqual(JSON.parse(deadlinesResult.stdout).warnings, [warning]);
+});
 test('deadlines print identical Moodle access warnings once with a count', async t => {
   const warning = { warningcode: '1', message: 'No access rights in module context' };
   const result = await cli(t, ['deadlines'], {
@@ -369,7 +388,7 @@ test('deadlines print identical Moodle access warnings once with a count', async
   }, true);
   assert.equal(result.code, 0, result.stderr);
   assert.equal(result.stderr.trim(), 'Cảnh báo (36): No access rights in module context');
-  assert.match(result.stdout, /30 ngày tới/);
+  assert.equal(JSON.parse(result.stdout).warnings.length, 36);
 });
 test('CLI reports Moodle grade denial on stderr without fabricating grades', async t => {
   const result = await cli(t, ['grades', '--course', '12', '--json'], {

@@ -223,23 +223,24 @@ test('student CLI validates arguments and supports JSON and readable output', as
     const preload = join(directory, 'fixture.js');
     const local = new Date(Date.now() + 7 * 3600_000);
     const year = local.getUTCFullYear() - (local.getUTCMonth() < 8 ? 1 : 0);
-    await writeFile(preload, `globalThis.fetch = async (_url, {body}) => new Response(JSON.stringify(
+    await writeFile(preload, `if (process.env.COURSE_TEST_TTY === '1') process.stdout.isTTY = true;
+      globalThis.fetch = async (_url, {body}) => new Response(JSON.stringify(
       body.get('wsfunction') === 'core_webservice_get_site_info' ? {userid: 7} :
       body.get('wsfunction') === 'core_course_get_categories' ? [{id: 192, name: '${year}-${year + 1}', path: '/192'},
         {id: 195, name: 'Chính Quy', path: '/192/193/195'}] : [{id: 12, fullname: 'Algorithms', category: 195}]));`);
-    const run = (...args: string[]) => spawnSync(process.execPath, ['--import', preload, 'course.js', ...args], {
-      cwd: import.meta.dirname, env: { ...process.env, XDG_CONFIG_HOME: directory }, encoding: 'utf8',
+    const run = (args: string[], tty = false) => spawnSync(process.execPath, ['--import', preload, 'course.js', ...args], {
+      cwd: import.meta.dirname, env: { ...process.env, XDG_CONFIG_HOME: directory, COURSE_TEST_TTY: tty ? '1' : '0', NO_COLOR: '1' }, encoding: 'utf8',
     });
-    const json = run('list', '--json');
+    const json = run(['list', '--json']);
     assert.equal(json.status, 0, json.stderr);
     assert.equal(JSON.parse(json.stdout).courses[0].id, 12);
     assert.ok(!json.stdout.includes(token));
-    const readable = run('list');
+    const readable = run(['list'], true);
     assert.equal(readable.status, 0, readable.stderr);
     assert.match(readable.stdout, /12.*Algorithms/);
     assert.throws(() => JSON.parse(readable.stdout));
     for (const args of [['view', '0'], ['grades'], ['deadlines', '--days', '0'], ['list', '--course', '12'], ['view', '12', '13']]) {
-      const invalid = run(...args);
+      const invalid = run(args);
       assert.equal(invalid.status, 1, `${args}: ${invalid.stdout}`);
       assert.ok(invalid.stderr.length > 0);
     }

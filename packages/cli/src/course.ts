@@ -35,9 +35,10 @@ const reportWarnings = (warnings: { message?: string; warningcode?: string }[] =
     console.error(`${prefix} ${message}`);
   }
 };
+const jsonOutput = (requested?: unknown) => requested === true || !process.stdout.isTTY;
 const diagnosticJson = (args: string[]) => {
   const { values } = parseArgs({ args, options: { json: { type: 'boolean' } } });
-  return values.json === true || !process.stdout.isTTY;
+  return jsonOutput(values.json);
 };
 const launchPath = '/admin/tool/mobile/launch.php';
 interface PendingLogin { loginId: string; passport: string; expiresAt: number }
@@ -200,12 +201,13 @@ async function main() {
       ...(action === 'list' ? { course: { type: 'string' as const } } : {}),
     };
     const { values, positionals } = parseArgs({ args: args.slice(2), options, allowPositionals: true });
+    const json = readOnly && jsonOutput(values.json);
     if (positionals.length > (action === 'list' ? 0 : 1)) throw new Error('Đối số quiz không hợp lệ.');
     const quizId = ['view', 'attempts', 'start'].includes(action);
     const id = action === 'list' ? undefined : await chooseId(positionals[0], quizId ? 'Quiz ID' : 'Attempt ID', async () => {
       const token = await readToken();
       return quizId ? quizChoices(token) : attemptChoices(token, action);
-    }, values.json === true);
+    }, json);
     const courseId = values.course === undefined ? undefined : requireId(String(values.course), 'Course ID');
     const token = await readToken();
     const load = async () => action === 'list' ? await listQuizzes(token, courseId)
@@ -215,9 +217,9 @@ async function main() {
       : action === 'start' ? await startQuiz(token, id)
       : action === 'resume' ? await resumeQuiz(token, id)
       : action === 'submit' ? await submitQuiz(token, id) : await reviewQuiz(token, id);
-    const result = readOnly && !values.json ? await withProgress('Đang đọc quiz từ Moodle…', load) : await load();
+    const result = readOnly && !json ? await withProgress('Đang đọc quiz từ Moodle…', load) : await load();
     reportWarnings(result.warnings);
-    if (values.json) show(result, { json: true });
+    if (json) show(result, { json: true });
     else if ('quizzes' in result) printCards(`Quiz · ${result.quizzes.length}`, result.quizzes.map(q => ({
       title: `#${q.id} · ${q.name}`,
       lines: [field('Môn', q.course), field('Thời lượng', q.timelimit ? `${q.timelimit} giây` : 'Không giới hạn'),
@@ -266,11 +268,12 @@ async function main() {
       ...(action === 'submit' ? { 'text-file': { type: 'string' as const }, draft: { type: 'boolean' as const } } : {}),
     };
     const { values, positionals } = parseArgs({ args: args.slice(2), options, allowPositionals: true });
+    const json = action !== 'submit' && jsonOutput(values.json);
     if (action === 'list' ? positionals.length !== 0 : action !== 'submit' && positionals.length > 1) {
       throw new Error('Đối số assignment không hợp lệ.');
     }
     const id = action === 'list' ? undefined : await chooseId(positionals[0], 'Assignment ID',
-      async () => assignmentChoices(await readToken()), values.json === true);
+      async () => assignmentChoices(await readToken()), json);
     const courseId = values.course === undefined ? undefined : requireId(String(values.course), 'Course ID');
     const token = await readToken();
     const files = positionals.slice(1);
@@ -282,9 +285,9 @@ async function main() {
       : action === 'status' ? await assignmentStatus(token, id)
       : action === 'download' ? await downloadAssignment(token, id, typeof values.output === 'string' ? values.output : undefined)
       : await submitAssignment(token, id, { files, textFile: typeof values['text-file'] === 'string' ? values['text-file'] : undefined, draft: values.draft === true });
-    const result = action === 'submit' || values.json ? await load() : await withProgress('Đang đọc bài tập từ Moodle…', load);
+    const result = action === 'submit' || json ? await load() : await withProgress('Đang đọc bài tập từ Moodle…', load);
     reportWarnings(result.warnings);
-    if (values.json) show(result, { json: true });
+    if (json) show(result, { json: true });
     else if ('assignments' in result) printCards(`Bài tập · ${result.assignments.length}`, result.assignments.map(a => ({
       title: `#${a.id} · ${a.name}`,
       lines: [field('Môn', `${a.coursename} (${a.courseid})`), `Hạn: ${formatLocalDate(a.duedate)}`,
@@ -327,13 +330,14 @@ async function main() {
       ...(action === 'discussions' ? { page: { type: 'string' as const } } : {}),
       ...(['create', 'reply'].includes(action) ? { subject: { type: 'string' as const }, 'text-file': { type: 'string' as const } } : {}),
     } });
+    const json = readOnly && jsonOutput(values.json);
     if (positionals.length > (action === 'list' ? 0 : ['subscribe', 'favourite'].includes(action) ? 2 : 1)) throw new Error('Đối số forum không hợp lệ.');
     const id = action === 'list' ? undefined : await chooseId(positionals[0],
       action === 'reply' ? 'Post ID' : ['view', 'subscribe', 'favourite'].includes(action) ? 'Discussion ID' : 'Forum ID', async () => {
         const token = await readToken();
         return action === 'reply' ? postChoices(token) : ['view', 'subscribe', 'favourite'].includes(action)
           ? discussionChoices(token) : forumChoices(token);
-      }, values.json === true);
+      }, json);
     const courseId = values.course === undefined ? undefined : requireId(String(values.course), 'Course ID');
     const page = values.page === undefined ? 1 : requireId(String(values.page), 'Số trang');
     const token = await readToken();
@@ -352,9 +356,9 @@ async function main() {
         body: typeof textFile === 'string' ? await readFile(textFile, 'utf8') : undefined,
         enabled: mode === 'on' ? true : mode === 'off' ? false : undefined,
       });
-    const result = !readOnly || values.json ? await load() : await withProgress('Đang đọc diễn đàn Moodle…', load);
+    const result = !readOnly || json ? await load() : await withProgress('Đang đọc diễn đàn Moodle…', load);
     reportWarnings(result.warnings);
-    if (values.json) show(result, { json: true });
+    if (json) show(result, { json: true });
     else if ('forums' in result) printCards(`Diễn đàn · ${result.forums.length}`, result.forums.map(forum => ({
       title: `#${forum.id} · ${forum.name}`, lines: [`Môn: ${forum.course} · Loại: ${forum.type}`,
         `Chủ đề: ${forum.numdiscussions ?? 'Không rõ'}`, forum.introText, forum.webUrl],
@@ -377,13 +381,14 @@ async function main() {
     } });
     if (positionals.length > (action === 'list' ? 0 : 1)) throw new Error('Đối số materials không hợp lệ.');
     if (action === 'download' && values.json || action === 'list' && values.output) throw new Error('Tùy chọn materials không hợp lệ.');
-    const courseId = await chooseId(values.course, 'Course ID', async () => courseChoices(await readToken()), values.json === true);
+    const json = jsonOutput(values.json);
+    const courseId = await chooseId(values.course, 'Course ID', async () => courseChoices(await readToken()), json);
     const token = await readToken();
-    const moduleId = action === 'download' ? await chooseId(positionals[0], 'Module ID', () => materialChoices(token, courseId)) : undefined;
-    const result = action === 'list' ? await withProgress('Đang đọc tài liệu…', () => materials(token, courseId))
+    const moduleId = action === 'download' ? await chooseId(positionals[0], 'Module ID', () => materialChoices(token, courseId), json) : undefined;
+    const result = action === 'list' ? json ? await materials(token, courseId) : await withProgress('Đang đọc tài liệu…', () => materials(token, courseId))
       : await downloadMaterial(token, courseId, moduleId!, typeof values.output === 'string' ? values.output : undefined);
     reportWarnings(result.warnings);
-    if (values.json) show(result, { json: true });
+    if (json) show(result, { json: true });
     else if ('materials' in result) printCards(`Tài liệu · ${result.materials.length}`, result.materials.map(item => ({
       title: `#${item.id} · ${item.name}`, lines: [`Mục: ${item.section} · Loại: ${item.type}`,
         item.descriptionText, ...item.files.map(file => `File: ${file.filename}`), item.webUrl],
@@ -407,10 +412,11 @@ async function main() {
     } });
     if (positionals.length > (action === 'inbox' ? 0 : 1)) throw new Error('Đối số messages không hợp lệ.');
     if (action === 'send' && (values.json || values.limit) || action !== 'send' && values['text-file']) throw new Error('Tùy chọn messages không hợp lệ.');
+    const json = action !== 'send' && jsonOutput(values.json);
     const id = action === 'inbox' ? undefined : await chooseId(positionals[0], action === 'view' ? 'Conversation ID' : 'User ID', async () => {
       const token = await readToken();
       return action === 'view' ? conversationChoices(token) : recipientChoices(token);
-    }, values.json === true);
+    }, json);
     const token = await readToken();
     const limit = values.limit === undefined ? undefined : requireId(String(values.limit), 'Giới hạn');
     const textFile = action === 'send' && values['text-file'] === undefined && process.stdin.isTTY && process.stdout.isTTY
@@ -419,7 +425,7 @@ async function main() {
       : action === 'view' ? await conversation(token, id!, limit)
       : await sendMessage(token, id!, typeof textFile === 'string' ? await readFile(textFile, 'utf8') : '');
     reportWarnings(result.warnings);
-    if (values.json) show(result, { json: true });
+    if (json) show(result, { json: true });
     else if ('conversations' in result) printCards(`Hội thoại · ${result.conversations.length}`, result.conversations.map(item => ({
       title: `#${item.id} · ${item.name || item.members?.map(member => member.fullname).join(', ') || 'Hội thoại'}`,
       lines: [`Chưa đọc: ${item.unreadcount ?? 0}`, ...(item.members ?? []).map(member => `${member.fullname} · User ID ${member.id}`)],
@@ -436,10 +442,12 @@ async function main() {
   } else if (args[0] === 'todo') {
     const { values, positionals } = parseArgs({ args: args.slice(1), options: { days: { type: 'string' }, json: { type: 'boolean' } }, allowPositionals: true });
     if (positionals.length) throw new Error('Đối số todo không hợp lệ.');
+    const json = jsonOutput(values.json);
     const token = await readToken();
-    const result = await withProgress('Đang đọc việc cần làm…', () => todos(token, values.days === undefined ? 30 : requireId(String(values.days), 'Số ngày')));
+    const load = () => todos(token, values.days === undefined ? 30 : requireId(String(values.days), 'Số ngày'));
+    const result = json ? await load() : await withProgress('Đang đọc việc cần làm…', load);
     reportWarnings(result.warnings);
-    if (values.json) show(result, { json: true });
+    if (json) show(result, { json: true });
     else printCards(`Cần làm · ${result.days} ngày tới · ${result.events.length}${result.truncated ? '+' : ''}`, result.events.map(item => ({
       title: item.name, lines: [`Hạn: ${formatLocalDate(item.timesort)}`, item.course?.fullname || '', item.webUrl],
     })));
@@ -452,7 +460,7 @@ async function main() {
       async () => favouriteCourseChoices(await readToken(), action as 'add' | 'remove'));
     const token = await readToken();
     const result = action === 'list' ? await favouriteCourses(token) : await setFavouriteCourse(token, id!, action === 'add');
-    if (values.json) show(result, { json: true });
+    if (action === 'list' && jsonOutput(values.json)) show(result, { json: true });
     else if ('courses' in result) printCards(`Môn yêu thích · ${result.courses.length}`, result.courses.map(item => ({ title: `#${item.id} · ${item.fullname}`, lines: [item.webUrl] })));
     else printCards('Môn yêu thích', [{ title: `Môn #${result.courseid}`, lines: [`Trạng thái: ${result.state === 'favourite' ? 'Yêu thích' : 'Bình thường'}`] }]);
   } else if (args[0] === 'event') {
@@ -484,16 +492,17 @@ async function main() {
       ...(action === 'notifications' ? { limit: { type: 'string' as const } } : {}),
     };
     const { values, positionals } = parseArgs({ args: args.slice(1), options, allowPositionals: true });
+    const json = jsonOutput(values.json);
     if (positionals.length > (action === 'view' ? 1 : 0)) throw new Error(`Đối số không hợp lệ cho course ${action}.`);
     const id = action === 'view' || ['grades', 'notices', 'progress'].includes(action)
       ? await chooseId(action === 'view' ? positionals[0] : typeof values.course === 'string' ? values.course : undefined,
-        'Course ID', async () => courseChoices(await readToken()), values.json === true)
+        'Course ID', async () => courseChoices(await readToken()), json)
       : values.course === undefined ? undefined : requireId(String(values.course), 'Course ID');
     const days = values.days === undefined ? (action === 'deadlines' ? 30 : 14) : requireId(typeof values.days === 'string' ? values.days : undefined, 'Số ngày');
     const limit = values.limit === undefined ? 20 : requireId(String(values.limit), 'Giới hạn');
     const token = await readToken();
     let all = values.all === true;
-    if (action === 'list' && !all && !values.json && process.stdin.isTTY && process.stdout.isTTY) {
+    if (action === 'list' && !all && !json && process.stdin.isTTY && process.stdout.isTTY) {
       printCards('Chọn phạm vi môn học', [
         { title: '1 · Năm học hiện tại', lines: ['Nhấn Enter để chọn nhanh.'] },
         { title: '2 · Tất cả môn', lines: ['Bao gồm các năm học trước.'] },
@@ -509,9 +518,9 @@ async function main() {
       : action === 'notices' ? await notices(token, id)
       : action === 'calendar' ? await calendar(token, id, days)
       : action === 'progress' ? await progress(token, id) : await notifications(token, limit);
-    const result = values.json ? await load() : await withProgress(action === 'deadlines' ? 'Đang kiểm tra hạn từ Moodle…' : 'Đang đọc dữ liệu Moodle…', load);
+    const result = json ? await load() : await withProgress(action === 'deadlines' ? 'Đang kiểm tra hạn từ Moodle…' : 'Đang đọc dữ liệu Moodle…', load);
     reportWarnings(result.warnings);
-    if (values.json) show(result, { json: true });
+    if (json) show(result, { json: true });
     else if ('courses' in result) printCards(`${result.academicYear ? `Môn học ${result.academicYear}` : 'Tất cả môn học'} · ${result.courses.length}`,
       result.courses.map(course => ({ title: `#${course.id} · ${course.fullname}`, lines: [course.webUrl] })));
     else if ('sections' in result) printCards(`Nội dung môn học · ${result.sections.length}`, result.sections.map(section => ({
