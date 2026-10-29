@@ -1,0 +1,412 @@
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { execFile, spawn, spawnSync } from 'node:child_process';
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test, type TestContext } from 'node:test';
+import { promisify } from 'node:util';
+
+const run = promisify(execFile);
+const token = 'a'.repeat(32);
+async function cliWithDirectory(directory: string, args: string[], preload: string) {
+  try {
+    return { ...await run(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
+      new URL('./course.js', import.meta.url).pathname, ...args],
+    { env: { ...process.env, XDG_CONFIG_HOME: directory } }), code: 0 };
+  } catch (error) {
+    const result = error as Error & { stdout: string; stderr: string; code: number };
+    return { stdout: result.stdout, stderr: result.stderr, code: result.code };
+  }
+}
+async function cli(t: TestContext, args: string[], responses: Record<string, unknown> = {}, authenticated = false) {
+  const directory = await mkdtemp(join(tmpdir(), 'course-cli-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  if (authenticated) {
+    await mkdir(join(directory, 'course-cli-spike'));
+    await writeFile(join(directory, 'course-cli-spike', 'auth.json'), JSON.stringify({ token }), { mode: 0o600 });
+  }
+  // Only the external network is replaced: argument parsing, token IO and all modules run normally.
+  const preload = `const responses = ${JSON.stringify(responses)};
+    globalThis.fetch = async (_url, options) => {
+      const name = options?.body instanceof URLSearchParams ? options.body.get('wsfunction') : 'publicConfig';
+      if (!(name in responses)) { console.error('UNEXPECTED_API:' + name); throw new Error('Unexpected API'); }
+      return new Response(JSON.stringify(responses[name]), { headers: { date: 'Thu, 29 Oct 2026 00:00:00 GMT' } });
+    };`;
+  try {
+    const result = await run(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
+      new URL('./course.js', import.meta.url).pathname, ...args], { env: { ...process.env, XDG_CONFIG_HOME: directory } });
+    return { ...result, code: 0 };
+  } catch (error) {
+    const result = error as Error & { stdout: string; stderr: string; code: number };
+    return { stdout: result.stdout, stderr: result.stderr, code: result.code };
+  }
+}
+const user = { userid: 7, fullname: 'Fixture Student' };
+const courses = [{ id: 12, fullname: 'Algorithms' }];
+const assignment = { id: 4, cmid: 40, name: 'Essay', duedate: 1793332800, cutoffdate: 0,
+  allowsubmissionsfromdate: 0, submissiondrafts: 1, teamsubmission: 0, timelimit: 0,
+  configs: [{ plugin: 'custom', subtype: 'assignsubmission', name: 'enabled', value: '1' }] };
+const quiz = { id: 6, course: 12, coursemodule: 60, name: 'Quiz', preferredbehaviour: 'deferredfeedback',
+  navmethod: 'free', overduehandling: 'autosubmit', browsersecurity: '-', hasquestions: 1 };
+const access = { canattempt: true, activerulenames: [], accessrules: [], preventaccessreasons: [], warnings: [] };
+
+// A missing router branch breaks these without relying on a user's saved credentials.
+test('CLI help includes auth status and every command group without reading auth', async t => {
+  for (const args of [[], ['--help']]) {
+    const result = await cli(t, args);
+    assert.equal(result.code, 0); assert.equal(result.stderr, '');
+    for (const text of ['auth status', 'assignment submit', 'quiz resume', 'deadlines', 'grades', 'notices',
+      'calendar export', 'event create', 'progress', 'completion done|undo', 'notifications read',
+      'forum create', 'forum reply', 'materials list', 'messages inbox', 'todo', 'favourites']) assert.ok(result.stdout.includes(text), text);
+    assert.doesNotMatch(result.stdout, /--json/);
+  }
+});
+test('new read command routes keep their card output and reject write commands without a terminal', async t => {
+  const responses = {
+    core_webservice_get_site_info: user,
+    core_course_get_contents: [{ id: 1, name: 'Week', modules: [{ id: 42, name: 'Slides', modname: 'resource' }] }],
+    core_message_get_conversations: { conversations: [{ id: 8, name: 'Friend' }] },
+    core_calendar_get_action_events_by_timesort: { events: [{ id: 9, name: 'Submit', timesort: 1800000000 }] },
+    block_starredcourses_get_starred_courses: [{ id: 12, fullname: 'Algorithms' }],
+    mod_forum_can_add_discussion: { status: true },
+  };
+  for (const [args, expected] of [
+    [['materials', 'list', '--course', '12'], 'Slides'],
+    [['messages', 'inbox'], 'Friend'],
+    [['todo'], 'Submit'],
+    [['favourites', 'list'], 'Algorithms'],
+  ] as const) {
+    const result = await cli(t, [...args], responses, true);
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, new RegExp(expected));
+  }
+  const directory = await mkdtemp(join(tmpdir(), 'course-text-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, 'message.txt');
+  await writeFile(path, 'Hello');
+  for (const args of [
+    ['forum', 'create', '8', '--subject', 'Hi', '--text-file', path],
+    ['messages', 'send', '8', '--text-file', path],
+    ['event', 'create', '--name', 'Study', '--at', '2026-11-01T09:00+07:00', '--minutes', '30'],
+  ]) {
+    const result = await cli(t, args, responses, true);
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Đã hủy/);
+    assert.doesNotMatch(result.stderr, /UNEXPECTED_API/);
+  }
+});
+test('noninteractive list defaults to current year and --all includes older enrolled courses', async t => {
+  const local = new Date(Date.now() + 7 * 3600_000);
+  const year = local.getUTCFullYear() - (local.getUTCMonth() < 8 ? 1 : 0);
+  const responses = {
+    core_webservice_get_site_info: user,
+    core_enrol_get_users_courses: [{ id: 12, fullname: 'Current', category: 195 }, { id: 13, fullname: 'Older', category: 189 }],
+    core_course_get_categories: [
+      { id: 192, name: `${year}-${year + 1}`, path: '/192' }, { id: 195, name: 'Chính Quy', path: '/192/193/195' },
+      { id: 173, name: `${year - 1}-${year}`, path: '/173' }, { id: 189, name: 'Chính Quy', path: '/173/183/189' },
+    ],
+  };
+  const current = await cli(t, ['list', '--json'], responses, true);
+  assert.equal(current.code, 0, current.stderr);
+  assert.deepEqual(JSON.parse(current.stdout).courses.map((course: { id: number }) => course.id), [12]);
+  const all = await cli(t, ['list', '--all', '--json'], responses, true);
+  assert.equal(all.code, 0, all.stderr);
+  assert.deepEqual(JSON.parse(all.stdout).courses.map((course: { id: number }) => course.id), [12, 13]);
+});
+test('interactive list lets the student choose all enrolled courses', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'course-cli-list-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(join(directory, 'course-cli-spike'));
+  await writeFile(join(directory, 'course-cli-spike', 'auth.json'), JSON.stringify({ token }));
+  const preload = `process.stdin.isTTY = true; process.stdout.isTTY = true;
+    globalThis.fetch = async (_url, { body }) => new Response(JSON.stringify(
+      body.get('wsfunction') === 'core_webservice_get_site_info' ? {userid: 7} :
+      body.get('wsfunction') === 'core_enrol_get_users_courses' ?
+        [{id: 12, fullname: 'Current'}, {id: 13, fullname: 'Older'}] : []));`;
+  const result = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
+    new URL('./course.js', import.meta.url).pathname, 'list'], {
+    env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' }, input: '2\n', encoding: 'utf8', timeout: 5000,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Chọn phạm vi môn học/);
+  assert.match(result.stdout, /Tất cả môn học · 2/);
+});
+test('missing IDs open a numbered picker in a terminal while explicit IDs remain valid', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'course-cli-pick-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(join(directory, 'course-cli-spike'));
+  await writeFile(join(directory, 'course-cli-spike', 'auth.json'), JSON.stringify({ token }));
+  const responses = {
+    core_webservice_get_site_info: user,
+    core_enrol_get_users_courses: courses,
+    core_course_get_contents: [{ id: 1, name: 'Week 1', modules: [{ id: 42, name: 'Slides', modname: 'resource' }] }],
+    mod_forum_get_forums_by_courses: [{ id: 8, course: 12, name: 'Q&A', type: 'general' }],
+    mod_forum_get_forum_discussions: { discussions: [{ id: 9, discussion: 10, subject: 'Question' }] },
+    core_message_get_conversations: { conversations: [{ id: 20, name: 'Classmate' }] },
+    core_message_get_conversation_messages: { messages: [{ id: 30, text: 'Hello' }] },
+  };
+  const preload = `process.stdin.isTTY = true; process.stdout.isTTY = true;
+    const responses = ${JSON.stringify(responses)};
+    globalThis.fetch = async (_url, { body }) => new Response(JSON.stringify(responses[body.get('wsfunction')]));`;
+  const run = (args: string[], input?: string) => spawnSync(process.execPath,
+    ['--import', `data:text/javascript,${encodeURIComponent(preload)}`, new URL('./course.js', import.meta.url).pathname, ...args],
+    { env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' }, input, encoding: 'utf8', timeout: 5000 });
+  for (const [args, expected] of [
+    [['view'], 'Week 1'], [['materials', 'list'], 'Slides'],
+    [['forum', 'discussions'], 'Question'], [['messages', 'view'], 'Hello'],
+  ] as const) {
+    const result = run([...args], '1\n');
+    assert.equal(result.status, 0, `${args.join(' ')}: ${result.stderr}`);
+    assert.match(result.stderr, /Chọn số thứ tự/);
+    assert.match(result.stdout, new RegExp(expected));
+  }
+  const explicit = run(['view', '12']);
+  assert.equal(explicit.status, 0, explicit.stderr);
+  assert.doesNotMatch(explicit.stderr, /Chọn số thứ tự/);
+});
+test('missing IDs in scripts fail before auth or Moodle requests', async t => {
+  for (const [args, label] of [
+    [['view'], 'Course ID'], [['view', '--json'], 'Course ID'],
+    [['forum', 'discussions'], 'Forum ID'], [['messages', 'view'], 'Conversation ID'],
+    [['quiz', 'resume'], 'Attempt ID'], [['assignment', 'submit'], 'Assignment ID'],
+  ] as const) {
+    const result = await cli(t, [...args]);
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, new RegExp(label));
+    assert.doesNotMatch(result.stderr, /UNEXPECTED_API|Chưa có token/);
+    assert.equal(result.stdout, '');
+  }
+});
+test('forum picker walks from forum to discussion with two user choices', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'course-cli-forum-pick-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(join(directory, 'course-cli-spike'));
+  await writeFile(join(directory, 'course-cli-spike', 'auth.json'), JSON.stringify({ token }));
+  const responses = {
+    core_webservice_get_site_info: user,
+    core_enrol_get_users_courses: courses,
+    mod_forum_get_forums_by_courses: [{ id: 8, course: 12, name: 'Q&A', type: 'general' }],
+    mod_forum_get_forum_discussions: { discussions: [{ id: 9, discussion: 10, subject: 'Question' }] },
+    mod_forum_get_discussion_posts: { forumid: 8, courseid: 12, posts: [{ id: 11, subject: 'Question', message: '<p>Answer</p>' }] },
+  };
+  const preload = `process.stdin.isTTY = true; process.stdout.isTTY = true;
+    const responses = ${JSON.stringify(responses)};
+    globalThis.fetch = async (_url, { body }) => new Response(JSON.stringify(responses[body.get('wsfunction')]));`;
+  const child = spawn(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
+    new URL('./course.js', import.meta.url).pathname, 'forum', 'view'],
+  { env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' } });
+  let stderr = '';
+  let stdout = '';
+  let prompts = 0;
+  child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
+  child.stderr.setEncoding('utf8').on('data', chunk => {
+    stderr += chunk;
+    while ((stderr.match(/Chọn số thứ tự/g) ?? []).length > prompts) { prompts++; child.stdin.write('1\n'); }
+  });
+  const timer = setTimeout(() => child.kill(), 5000);
+  const code = await new Promise<number | null>(resolve => child.on('close', resolve));
+  clearTimeout(timer);
+  assert.equal(code, 0, stderr);
+  assert.equal(prompts, 2);
+  assert.match(stdout, /Answer/);
+});
+test('new read commands route through Moodle and render readable cards', async t => {
+  const responses = {
+    core_webservice_get_site_info: user,
+    core_enrol_get_users_courses: courses,
+    core_calendar_get_calendar_events: { events: [{ id: 1, name: 'Office hours', courseid: 12, timestart: Math.floor(Date.now() / 1000) + 3600 }] },
+    core_completion_get_activities_completion_status: { statuses: [{ cmid: 40, state: 1, hascompletion: true }] },
+    core_course_get_contents: [{ id: 1, name: 'Week', modules: [{ id: 40, name: 'Essay', modname: 'assign' }] }],
+    message_popup_get_popup_notifications: { unreadcount: 1, notifications: [{ id: 3, subject: 'Feedback', fullmessagehtml: '<p>Ready</p>', read: false }] },
+    mod_forum_get_forums_by_courses: [{ id: 8, course: 12, name: 'Q&A', type: 'general', cmid: 80 }],
+    mod_forum_get_forum_discussions: { discussions: [{ id: 10, discussion: 11, subject: 'Question', message: '<p>Help</p>' }] },
+    mod_forum_get_discussion_posts: { forumid: 8, courseid: 12, posts: [{ id: 10, subject: 'Question', message: '<p>Answer</p>' }] },
+  };
+  for (const [args, expected] of [
+    [['calendar'], 'Office hours'], [['progress', '--course', '12'], 'Essay'],
+    [['notifications'], 'Feedback'], [['forum', 'list', '--course', '12'], 'Q&A'],
+    [['forum', 'discussions', '8'], 'Question'], [['forum', 'view', '11'], 'Answer'],
+  ] as const) {
+    const result = await cli(t, [...args], responses, true);
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /COURSE CLI/);
+    assert.ok(result.stdout.includes(expected), args.join(' '));
+    assert.doesNotMatch(result.stdout, /UNEXPECTED_API/);
+  }
+});
+test('CLI auth status verifies the saved token without returning credentials', async t => {
+  for (const args of [['auth', 'status'], ['auth', 'status', '--json']]) {
+    const result = await cli(t, args, { core_webservice_get_site_info: user }, true);
+    assert.equal(result.code, 0); assert.equal(result.stderr, '');
+    assert.deepEqual(JSON.parse(result.stdout), { authenticated: true, userid: 7, fullname: 'Fixture Student' });
+    assert.ok(!result.stdout.includes(token));
+  }
+});
+
+test('human assignment lists use readable cards and local dates instead of Unix timestamps', async t => {
+  const result = await cli(t, ['assignment', 'list'], {
+    core_webservice_get_site_info: user,
+    core_enrol_get_users_courses: courses,
+    mod_assign_get_assignments: { courses: [{ id: 12, fullname: 'Algorithms', assignments: [assignment] }], warnings: [] },
+  }, true);
+  assert.equal(result.code, 0); assert.equal(result.stderr, '');
+  assert.match(result.stdout, /Bài tập/);
+  assert.match(result.stdout, /Essay/);
+  assert.match(result.stdout, /Algorithms \(12\)/);
+  assert.match(result.stdout, /Hạn: 30\/10\/2026 11:00/);
+  assert.doesNotMatch(result.stdout, /1793332800|\t/);
+});
+
+test('human quiz reviews retain question slots, answers, and the Moodle review link', async t => {
+  const attempt = { id: 8, quiz: 6, userid: 7, uniqueid: 91, attempt: 1, state: 'finished', currentpage: 0,
+    timestart: 1793232000, timemodified: 1793232100, timefinish: 1793232200 };
+  const result = await cli(t, ['quiz', 'review', '8'], {
+    mod_quiz_get_quizzes_by_courses: { quizzes: [quiz], warnings: [] },
+    mod_quiz_get_user_attempts: { attempts: [attempt], warnings: [] },
+    mod_quiz_get_attempt_review: { attempt, questions: [{ slot: 1, html: '<p>Prompt</p>', response: 'A', rightanswer: 'B', status: 'incorrect' }], grade: '5/10', warnings: [] },
+  }, true);
+  assert.equal(result.code, 0); assert.equal(result.stderr, '');
+  assert.match(result.stdout, /Câu 1/);
+  assert.match(result.stdout, /Trạng thái: Chưa đúng/);
+  assert.match(result.stdout, /response: A/);
+  assert.match(result.stdout, /rightanswer: B/);
+  assert.match(result.stdout, /review\.php\?attempt=8/);
+});
+
+test('human quiz attempt lists retain the Moodle link', async t => {
+  const result = await cli(t, ['quiz', 'attempts', '6'], {
+    mod_quiz_get_quizzes_by_courses: { quizzes: [quiz], warnings: [] },
+    mod_quiz_get_user_attempts: { attempts: [{ id: 8, quiz: 6, userid: 7, uniqueid: 91, attempt: 1,
+      state: 'inprogress', currentpage: 0, timestart: 1793232000, timemodified: 1793232100, timefinish: 0 }], warnings: [] },
+  }, true);
+  assert.equal(result.code, 0); assert.equal(result.stderr, '');
+  assert.match(result.stdout, /Lượt #8 · Đang làm/);
+  assert.match(result.stdout, /mod\/quiz\/view\.php\?id=60/);
+});
+
+test('auth callback verifies the one-time passport and Moodle identity before saving the token', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'course-cli-callback-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const config = join(directory, 'course-cli-spike'); await mkdir(config);
+  const loginId = 'b'.repeat(32); const passport = 'c'.repeat(64); const callbackToken = 'd'.repeat(32);
+  await writeFile(join(config, 'pending-login.json'), JSON.stringify({ loginId, passport, expiresAt: Date.now() + 60_000 }), { mode: 0o600 });
+  const siteId = createHash('md5').update('https://courses.fit.hcmus.edu.vn' + passport).digest('hex');
+  const callback = `coursecli://token=${Buffer.from(`${siteId}:::${callbackToken}`).toString('base64')}`;
+  const preload = `globalThis.fetch = async (_url, options) => {
+    const name = options?.body instanceof URLSearchParams ? options.body.get('wsfunction') : '';
+    if (name !== 'core_webservice_get_site_info') throw new Error('Unexpected API: ' + name);
+    return new Response(JSON.stringify({ userid: 7, fullname: 'Fixture Student' }));
+  };`;
+  const result = await run(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
+    new URL('./course.js', import.meta.url).pathname, 'auth', 'callback', '--config-dir', config, callback]);
+  assert.equal(result.stdout, ''); assert.equal(result.stderr, '');
+  assert.deepEqual(JSON.parse(await readFile(join(config, 'auth.json'), 'utf8')), { token: callbackToken });
+  assert.equal((await stat(join(config, 'auth.json'))).mode & 0o777, 0o600);
+  assert.deepEqual(JSON.parse(await readFile(join(config, `login-${loginId}.json`), 'utf8')),
+    { authenticated: true, userid: 7, fullname: 'Fixture Student' });
+  await assert.rejects(readFile(join(config, 'pending-login.json')));
+  const replay = await cliWithDirectory(directory, ['auth', 'callback', '--config-dir', config, callback],
+    `globalThis.fetch = async () => { console.error('UNEXPECTED_API'); throw new Error('Unexpected API'); };`);
+  assert.equal(replay.code, 1); assert.match(replay.stderr, /không có lần đăng nhập|callback đã được dùng/i);
+  assert.doesNotMatch(replay.stderr, /UNEXPECTED_API/);
+  assert.deepEqual(JSON.parse(await readFile(join(config, 'auth.json'), 'utf8')), { token: callbackToken });
+});
+
+test('auth callback with another login passport never calls Moodle or replaces saved credentials', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'course-cli-callback-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const config = join(directory, 'course-cli-spike'); await mkdir(config);
+  const previousToken = 'e'.repeat(32); const loginId = 'b'.repeat(32); const passport = 'c'.repeat(64);
+  await writeFile(join(config, 'auth.json'), JSON.stringify({ token: previousToken }), { mode: 0o600 });
+  await writeFile(join(config, 'pending-login.json'), JSON.stringify({ loginId, passport, expiresAt: Date.now() + 60_000 }), { mode: 0o600 });
+  const wrongSiteId = createHash('md5').update('https://courses.fit.hcmus.edu.vn' + 'f'.repeat(64)).digest('hex');
+  const callback = `coursecli://token=${Buffer.from(`${wrongSiteId}:::${'d'.repeat(32)}`).toString('base64')}`;
+  const preload = `globalThis.fetch = async () => { console.error('UNEXPECTED_API'); throw new Error('Unexpected API'); };`;
+  const result = await cliWithDirectory(directory, ['auth', 'callback', '--config-dir', config, callback], preload);
+  assert.equal(result.code, 1); assert.match(result.stderr, /không hợp lệ|lần đăng nhập khác/);
+  assert.doesNotMatch(result.stderr, /UNEXPECTED_API/);
+  assert.deepEqual(JSON.parse(await readFile(join(config, 'auth.json'), 'utf8')), { token: previousToken });
+  assert.equal((await readFile(join(config, 'pending-login.json'), 'utf8')).includes(passport), true);
+});
+test('CLI rejects invalid IDs, missing/extra arguments and unsafe flags before reading auth', async t => {
+  for (const args of [
+    ['view', '0'], ['view', '12', 'extra'], ['grades'], ['deadlines', '--days', '0'],
+    ['assignment', 'view', '4x'], ['assignment', 'list', '--course', '-1'], ['assignment', 'status'],
+    ['assignment', 'submit', '4', '--yes'], ['assignment', 'submit', '4', '--json'],
+    ['quiz', 'start', '6', '--json'], ['quiz', 'resume', '0'], ['quiz', 'view', '6', 'extra'], ['unknown'],
+  ]) {
+    const result = await cli(t, args);
+    assert.equal(result.code, 1, args.join(' ')); assert.equal(result.stdout, '');
+    assert.ok(result.stderr); assert.doesNotMatch(result.stderr, /Chưa có token|UNEXPECTED_API/);
+  }
+});
+test('CLI missing auth errors are stderr-only and never contact Moodle', async t => {
+  for (const args of [['list', '--json'], ['auth', 'status'], ['assignment', 'status', '4'], ['quiz', 'attempts', '6']]) {
+    const result = await cli(t, args);
+    assert.equal(result.code, 1); assert.equal(result.stdout, '');
+    assert.match(result.stderr, /course auth login/); assert.doesNotMatch(result.stderr, /UNEXPECTED_API/);
+  }
+});
+test('CLI JSON retains IDs, timestamps and structured warnings while diagnostics use stderr', async t => {
+  const warning = { warningcode: 'partial', message: 'Incomplete fixture data' };
+  const result = await cli(t, ['assignment', 'list', '--course', '12', '--json'], {
+    mod_assign_get_assignments: { courses: [{ id: 12, assignments: [assignment] }], warnings: [warning] },
+  }, true);
+  assert.equal(result.code, 0); assert.match(result.stderr, /Incomplete fixture data/);
+  const data = JSON.parse(result.stdout);
+  assert.equal(data.assignments[0].id, 4); assert.equal(data.assignments[0].duedate, 1793332800);
+  assert.equal(data.assignments[0].webUrl, 'https://courses.fit.hcmus.edu.vn/mod/assign/view.php?id=40');
+  assert.deepEqual(data.warnings, [warning]); assert.ok(!result.stdout.includes(token));
+});
+test('deadlines print identical Moodle access warnings once with a count', async t => {
+  const warning = { warningcode: '1', message: 'No access rights in module context' };
+  const result = await cli(t, ['deadlines'], {
+    core_webservice_get_site_info: user,
+    core_enrol_get_users_courses: courses,
+    mod_assign_get_assignments: { courses: [], warnings: Array(36).fill(warning) },
+    mod_quiz_get_quizzes_by_courses: { quizzes: [], warnings: [] },
+  }, true);
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.stderr.trim(), 'Cảnh báo (36): No access rights in module context');
+  assert.match(result.stdout, /30 ngày tới/);
+});
+test('CLI reports Moodle grade denial on stderr without fabricating grades', async t => {
+  const result = await cli(t, ['grades', '--course', '12', '--json'], {
+    core_webservice_get_site_info: user,
+    gradereport_user_get_grade_items: { exception: 'moodle_exception', errorcode: 'nopermissiontoviewgrades', message: token },
+  }, true);
+  assert.equal(result.code, 1); assert.equal(result.stdout, '');
+  assert.match(result.stderr, /nopermissiontoviewgrades/); assert.ok(!result.stderr.includes(token));
+});
+test('CLI unsupported assignment plugin and timed assignment fail before upload', async t => {
+  for (const a of [assignment, { ...assignment, timelimit: 60,
+    configs: [{ plugin: 'file', subtype: 'assignsubmission', name: 'enabled', value: '1' }] }]) {
+    const result = await cli(t, ['assignment', 'submit', '4', 'not-read.txt'], {
+      core_webservice_get_site_info: user, core_enrol_get_users_courses: courses,
+      mod_assign_get_assignments: { courses: [{ id: 12, assignments: [a] }], warnings: [] },
+      mod_assign_get_submission_status: { lastattempt: { submissionsenabled: true, locked: false, canedit: true, caneditowner: true }, warnings: [] },
+    }, true);
+    assert.equal(result.code, 1); assert.equal(result.stdout, ''); assert.match(result.stderr, /chưa hỗ trợ/);
+    assert.match(result.stderr, /view.php\?id=40/); assert.doesNotMatch(result.stderr, /UNEXPECTED_API/);
+  }
+});
+test('CLI rejects unsupported quiz behaviour and essay start without consuming an attempt', async t => {
+  for (const q of [quiz, { ...quiz, preferredbehaviour: 'adaptive' }]) {
+    const result = await cli(t, ['quiz', 'start', '6'], {
+      mod_quiz_get_quizzes_by_courses: { quizzes: [q], warnings: [] }, mod_quiz_get_quiz_access_information: access,
+      mod_quiz_get_quiz_required_qtypes: { questiontypes: ['essay'], warnings: [] },
+    }, true);
+    assert.equal(result.code, 1); assert.equal(result.stdout, ''); assert.match(result.stderr, /chưa hỗ trợ/);
+    assert.match(result.stderr, /view.php\?id=60/); assert.doesNotMatch(result.stderr, /UNEXPECTED_API/);
+  }
+});
+test('CLI read-only quiz status preserves unknown timing and never calls expiry-sensitive APIs', async t => {
+  const result = await cli(t, ['quiz', 'status', '8', '--json'], {
+    mod_quiz_get_quizzes_by_courses: { quizzes: [quiz], warnings: [] },
+    mod_quiz_get_user_attempts: { attempts: [{ id: 8, quiz: 6, state: 'inprogress' }], warnings: [] },
+  }, true);
+  assert.equal(result.code, 0); assert.match(result.stderr, /endtime/); assert.doesNotMatch(result.stderr, /UNEXPECTED_API/);
+  const data = JSON.parse(result.stdout);
+  assert.equal(data.attempt.id, 8); assert.equal(data.endtime, null); assert.equal(data.answeredQuestions, null);
+});

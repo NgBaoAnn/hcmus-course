@@ -1,0 +1,109 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { confirm, formatCards, formatLocalDate, formatStatus, render, requireId, selectItem, show } from './terminal.js';
+
+test('IDs must be positive safe integers', () => {
+  assert.equal(requireId('42', 'quiz'), 42);
+  for (const value of ['0', '-2', '1.5', 'abc', '9007199254740992', '']) {
+    assert.throws(() => requireId(value, 'quiz'), /quiz/);
+  }
+});
+
+test('terminal rendering decodes HTML and strips control characters', () => {
+  assert.equal(render('<p>A &amp; B <strong>c</strong></p><p>second \x1b[31m</p>'), 'A & B c\nsecond');
+  assert.equal(render('<a href="https://example.org/file">Notes</a>'), 'Notes (https://example.org/file)');
+  assert.equal(render('<a href="javascript:alert(1)">Unsafe</a>'), 'Unsafe');
+});
+
+test('missing Moodle descriptions render as empty text', () => {
+  assert.equal(render(undefined), '');
+  assert.equal(render(''), '');
+  assert.equal(render('Plain text'), 'Plain text');
+});
+
+test('card output stays readable without a TTY and sanitizes untrusted text', () => {
+  const output = formatCards('Bài tập\x1b[31m', [{ title: 'Bài cuối kỳ', lines: ['Hạn: 29/10/2026 07:00', 'https://example.org'] }]);
+  assert.match(output, /╔══ COURSE CLI\n║  Bài tập/);
+  assert.match(output, /╭─ Bài cuối kỳ\n│  Hạn: 29\/10\/2026 07:00\n│  https:\/\/example.org/);
+  assert.doesNotMatch(output, /\x1b/);
+  assert.match(formatCards('Môn học', []), /Không có mục nào\./);
+});
+
+test('card headings use color only on a TTY when NO_COLOR is unset', () => {
+  const previousTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY');
+  const previousNoColor = process.env.NO_COLOR;
+  try {
+    Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: true });
+    process.env.NO_COLOR = '';
+    assert.doesNotMatch(formatCards('Môn học', []), /\x1b\[/);
+    delete process.env.NO_COLOR;
+    assert.match(formatCards('Môn học', []), /\x1b\[1;36m╔══ COURSE CLI\x1b\[0m/);
+  } finally {
+    if (previousTTY) Object.defineProperty(process.stdout, 'isTTY', previousTTY);
+    else delete (process.stdout as unknown as { isTTY?: boolean }).isTTY;
+    if (previousNoColor === undefined) delete process.env.NO_COLOR;
+    else process.env.NO_COLOR = previousNoColor;
+  }
+});
+
+test('long Vietnamese card content wraps within a narrow terminal', () => {
+  const previousColumns = Object.getOwnPropertyDescriptor(process.stdout, 'columns');
+  try {
+    Object.defineProperty(process.stdout, 'columns', { configurable: true, value: 36 });
+    const output = formatCards('Bài tập', [{ title: 'Phát triển ứng dụng web nâng cao cho sinh viên',
+      lines: ['Mô tả: Nội dung bài tập rất dài và cần xuống dòng cho dễ đọc.'] }]);
+    assert.match(output, /Phát triển ứng dụng web/);
+    assert.ok(output.split('\n').every(line => Array.from(line).length <= 36), output);
+  } finally {
+    if (previousColumns) Object.defineProperty(process.stdout, 'columns', previousColumns);
+    else delete (process.stdout as unknown as { columns?: number }).columns;
+  }
+});
+
+test('Unix dates display in Ho Chi Minh time and missing values stay explicit', () => {
+  assert.equal(formatLocalDate(Date.UTC(2026, 9, 29, 0) / 1000), '29/10/2026 07:00');
+  assert.equal(formatLocalDate(0), 'Không đặt');
+  assert.equal(formatLocalDate(undefined), 'Không đặt');
+});
+
+test('known Moodle statuses use student-friendly labels and unknown states survive', () => {
+  assert.equal(formatStatus('submitted'), 'Đã nộp');
+  assert.equal(formatStatus('inprogress'), 'Đang làm');
+  assert.equal(formatStatus('not-in-progress'), 'Chưa bắt đầu');
+  assert.equal(formatStatus('future-state'), 'future-state');
+});
+
+test('confirmation fails closed without an interactive terminal', async () => {
+  assert.equal(await confirm('Continue?'), false);
+});
+
+test('picker paginates, validates choices and cancels without selecting', async t => {
+  const input = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
+  const output = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY');
+  const lines: string[] = [];
+  t.mock.method(console, 'error', (line: string) => lines.push(line));
+  try {
+    Object.defineProperty(process.stdin, 'isTTY', { configurable: true, value: true });
+    Object.defineProperty(process.stdout, 'isTTY', { configurable: true, value: true });
+    const items = Array.from({ length: 12 }, (_, index) => ({ id: index + 20, label: `Môn ${index + 1}` }));
+    const answers = ['n', '3', 'p', '1'];
+    assert.equal((await selectItem('Môn học', items, async () => answers.shift() ?? '')).id, 20);
+    assert.ok(lines.some(line => line.includes('Trang 2/2')));
+    assert.ok(lines.some(line => line.includes('Lựa chọn không hợp lệ')));
+    await assert.rejects(selectItem('Môn học', items, async () => '0'), /Đã hủy/);
+  } finally {
+    if (input) Object.defineProperty(process.stdin, 'isTTY', input);
+    else delete (process.stdin as { isTTY?: boolean }).isTTY;
+    if (output) Object.defineProperty(process.stdout, 'isTTY', output);
+    else delete (process.stdout as { isTTY?: boolean }).isTTY;
+  }
+});
+
+test('JSON output escapes untrusted control characters', (t) => {
+  const lines: string[] = [];
+  t.mock.method(console, 'log', (line: string) => lines.push(line));
+  show({ name: 'x\x1by' }, { json: true });
+  assert.equal(lines.length, 1);
+  assert.equal(JSON.parse(lines[0]).name, 'x\x1by');
+  assert.ok(!lines[0].includes('\x1b'));
+});

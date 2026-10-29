@@ -1,0 +1,26 @@
+{
+  "name": "course-cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "course": "./dist/course.js"
+  },
+  "files": ["dist/*.js", "!dist/*.test.js", "README.md"],
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test dist/*.test.js",
+    "start": "node dist/course.js",
+    "prepare": "npm run build"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "linkedom": "^0.18.14"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  }
+}
