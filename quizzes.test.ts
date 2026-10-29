@@ -283,13 +283,15 @@ test('media warnings link to this attempt and prompt never logs saved answer tex
   const f = await setup(t);
   f.pages.set(0, [question('essay', '<textarea name="q91:1_answer" class="qtype_essay_plain">secret-existing-answer</textarea><input type="hidden" name="q91:1_answerformat" value="2"><img src="image.png">')]);
   let sawQuestion = false;
+  let questionPrompt = '';
   await resumeQuiz(token, 8, { ask: async prompt => {
     assert.ok(!prompt.includes('secret-existing-answer'));
     if (prompt.includes('Nhập yes')) return 'yes';
-    if (prompt.includes('câu 1')) { sawQuestion = true; assert.match(prompt, /attempt=8/); return ''; }
+    if (prompt.includes('câu 1')) { sawQuestion = true; questionPrompt = prompt; return ''; }
     return 'quit';
   } });
   assert.equal(sawQuestion, true);
+  assert.match(questionPrompt, /attempt=8/);
 });
 test('grace-period submit is allowed but abandoned attempts are never reopened', async t => {
   const f = await setup(t); f.quiz.overduehandling = 'graceperiod'; f.attempt.state = 'overdue';
