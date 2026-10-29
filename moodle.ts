@@ -27,12 +27,19 @@ export function decodeAppToken(href: string | null | undefined, passport: string
   return parts[1];
 }
 
-async function requestJson(url: string, options: RequestInit = {}): Promise<unknown> {
+export interface ResponseTiming { serverTime?: number; receivedAt?: number }
+
+async function requestJson(url: string, options: RequestInit = {}, timing?: ResponseTiming): Promise<unknown> {
   let response: Response;
   try {
     response = await fetch(url, { ...options, redirect: 'error', signal: AbortSignal.timeout(30_000) });
   } catch {
     throw new Error('Không kết nối được Moodle hoặc yêu cầu đã quá hạn.');
+  }
+  if (timing) {
+    const date = Date.parse(response.headers.get('date') ?? '');
+    timing.serverTime = Number.isFinite(date) ? date / 1000 : undefined;
+    timing.receivedAt = performance.now();
   }
   if (!response.ok) throw new Error(`Moodle trả HTTP ${response.status}.`);
   try {
@@ -43,10 +50,10 @@ async function requestJson(url: string, options: RequestInit = {}): Promise<unkn
 }
 
 export async function api<T = unknown>(token: string, method: string,
-  params: Record<string, string | number | boolean> = {}): Promise<T> {
+  params: Record<string, string | number | boolean> = {}, timing?: ResponseTiming): Promise<T> {
   const body = new URLSearchParams(Object.entries({ ...params, wstoken: token, wsfunction: method,
-    moodlewsrestformat: 'json' }).map(([key, value]) => [key, String(value)]));
-  const data = await requestJson(`${SITE}/webservice/rest/server.php`, { method: 'POST', body });
+    moodlewsrestformat: 'json' }).map(([key, value]) => [key, typeof value === 'boolean' ? (value ? '1' : '0') : String(value)]));
+  const data = await requestJson(`${SITE}/webservice/rest/server.php`, { method: 'POST', body }, timing);
   const error = data as { exception?: string; errorcode?: string } | null;
   if (error?.exception || error?.errorcode) {
     const code = String(error.errorcode ?? 'unknown').replace(/[^a-z0-9_]/gi, '').slice(0, 80);

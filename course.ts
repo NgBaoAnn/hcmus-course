@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { api, decodeAppToken, publicConfig, SITE, type SiteInfo } from './moodle.js';
 import { listAssignments, viewAssignment, assignmentStatus, downloadAssignment, submitAssignment } from './assignments.js';
+import { listQuizzes, viewQuiz, quizAttempts, quizStatus, startQuiz, resumeQuiz, submitQuiz, reviewQuiz } from './quizzes.js';
 import { render, requireId, show } from './terminal.js';
 import { listCourses, viewCourse, deadlines, grades, notices, type Course, type AssignmentsResponse } from './student.js';
 
@@ -119,7 +120,34 @@ async function probe() {
 async function main() {
   const args = process.argv.slice(2);
   const command = args.join(' ');
-  if (args[0] === 'assignment') {
+  if (args[0] === 'quiz') {
+    const action = args[1];
+    if (!['list', 'view', 'attempts', 'status', 'start', 'resume', 'submit', 'review'].includes(action)) throw new Error('Lệnh quiz không hợp lệ.');
+    const readOnly = ['list', 'view', 'attempts', 'status', 'review'].includes(action);
+    const options = {
+      ...(readOnly ? { json: { type: 'boolean' as const } } : {}),
+      ...(action === 'list' ? { course: { type: 'string' as const } } : {}),
+    };
+    const { values, positionals } = parseArgs({ args: args.slice(2), options, allowPositionals: true });
+    if (positionals.length !== (action === 'list' ? 0 : 1)) throw new Error('Đối số quiz không hợp lệ.');
+    const id = action === 'list' ? undefined : requireId(positionals[0], ['view', 'attempts', 'start'].includes(action) ? 'Quiz ID' : 'Attempt ID');
+    const courseId = values.course === undefined ? undefined : requireId(String(values.course), 'Course ID');
+    const token = await readToken();
+    const result = action === 'list' ? await listQuizzes(token, courseId)
+      : action === 'view' ? await viewQuiz(token, id)
+      : action === 'attempts' ? await quizAttempts(token, id)
+      : action === 'status' ? await quizStatus(token, id)
+      : action === 'start' ? await startQuiz(token, id)
+      : action === 'resume' ? await resumeQuiz(token, id)
+      : action === 'submit' ? await submitQuiz(token, id) : await reviewQuiz(token, id);
+    for (const warning of result.warnings ?? []) console.error(`Cảnh báo: ${render(warning.message || warning.warningcode)}`);
+    if (values.json) show(result, { json: true });
+    else if ('quizzes' in result) show(result.quizzes.map(q => `${q.id}\t${q.name}\nMôn: ${q.course}; thời lượng: ${q.timelimit ?? 'không rõ'} giây; lượt: ${q.attempts?.length ?? 'không rõ'}/${q.allowedAttempts ?? 'không rõ'} (0 = không giới hạn)\nMở: ${q.timeopenLocal}; đóng: ${q.timecloseLocal}\n${q.introText}\n${q.access ? [...q.access.accessrules, ...q.access.preventaccessreasons].join('\n') : 'Chưa đọc đủ điều kiện truy cập.'}\n${q.webUrl}`).join('\n\n') || 'Không có quiz.');
+    else if ('state' in result) {
+      show(`${result.state}: ${result.message}\n${result.webUrl}`);
+      if (['uncertain', 'conflict', 'unsupported', 'expired', 'abandoned'].includes(result.state)) process.exitCode = 1;
+    } else show(result);
+  } else if (args[0] === 'assignment') {
     const action = args[1];
     if (!['list', 'view', 'status', 'download', 'submit'].includes(action)) throw new Error('Lệnh assignment không hợp lệ.');
     const options = {
@@ -190,7 +218,7 @@ async function main() {
     await probe();
   } else {
     if (command && command !== '--help') throw new Error(`Lệnh không hợp lệ: ${command}`);
-    console.log('Course CLI:\n  course doctor\n  course auth login\n  course probe\n  course auth logout\n  course list [--json]\n  course view <course-id> [--json]\n  course deadlines [--course <course-id>] [--days <positive-integer>] [--overdue] [--json]\n  course grades --course <course-id> [--json]\n  course notices --course <course-id> [--json]\n  course assignment list [--course <course-id>] [--json]\n  course assignment view|status <assignment-id> [--json]\n  course assignment download <assignment-id> [--output <directory>] [--json]\n  course assignment submit <assignment-id> [files...] [--text-file <path>] [--draft]');
+    console.log('Course CLI:\n  course doctor\n  course auth login\n  course probe\n  course auth logout\n  course list [--json]\n  course view <course-id> [--json]\n  course deadlines [--course <course-id>] [--days <positive-integer>] [--overdue] [--json]\n  course grades --course <course-id> [--json]\n  course notices --course <course-id> [--json]\n  course assignment list [--course <course-id>] [--json]\n  course assignment view|status <assignment-id> [--json]\n  course assignment download <assignment-id> [--output <directory>] [--json]\n  course assignment submit <assignment-id> [files...] [--text-file <path>] [--draft]\n  course quiz list [--course <course-id>] [--json]\n  course quiz view|attempts <quiz-id> [--json]\n  course quiz status|review <attempt-id> [--json]\n  course quiz start <quiz-id>\n  course quiz resume|submit <attempt-id>');
   }
 }
 

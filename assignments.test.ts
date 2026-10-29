@@ -200,7 +200,7 @@ test('mixed submission accepts statement and no-draft save finalizes without ext
     assert.match(preview, /I wrote this myself/); return true;
   } });
   assert.equal(result.state, 'submitted');
-  assert.equal(f.calls.find(c => c.name === 'mod_assign_submit_for_grading')!.body.get('acceptsubmissionstatement'), 'true');
+  assert.equal(f.calls.find(c => c.name === 'mod_assign_submit_for_grading')!.body.get('acceptsubmissionstatement'), '1');
   f.s = status(); f.a.requiresubmissionstatement = 0; f.a.submissiondrafts = 0; f.calls.length = 0;
   assert.equal((await submitAssignment(token, 4, { textFile: text, confirm: async () => true })).state, 'submitted');
   assert.equal(f.calls.some(c => c.name === 'mod_assign_submit_for_grading'), false);

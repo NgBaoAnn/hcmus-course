@@ -57,3 +57,15 @@ test('rejects HTTP errors and non-JSON responses without printing response bodie
   mocked.mock.mockImplementation(async () => new Response(`<html>${token}</html>`));
   await assert.rejects(api(token, 'core_webservice_get_site_info'), /JSON/);
 });
+
+test('REST booleans are encoded as Moodle 1/0 values', async t => {
+  let sent: URLSearchParams | undefined;
+  t.mock.method(globalThis, 'fetch', async (_url: RequestInfo | URL, options?: RequestInit) => {
+    assert.ok(options?.body instanceof URLSearchParams);
+    sent = options.body;
+    return new Response('{}');
+  });
+  await api(token, 'fixture_boolean_parameters', { enabled: true, disabled: false });
+  assert.equal(sent?.get('enabled'), '1');
+  assert.equal(sent?.get('disabled'), '0');
+});
