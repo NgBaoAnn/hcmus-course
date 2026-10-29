@@ -6,7 +6,7 @@ lời quiz qua API. Trình duyệt chỉ dùng cho đăng nhập Microsoft.
 
 ## Cài và chạy
 
-Cần Node.js **22 trở lên** và Microsoft Edge hoặc Google Chrome cho `auth login`.
+Cần Node.js **22 trở lên** và trình duyệt mặc định của hệ điều hành cho `auth login`.
 
 ```sh
 npm install          # prepare tự biên dịch TypeScript vào dist/
@@ -27,19 +27,22 @@ node dist/course.js list --json
 
 Sau khi sửa mã nguồn `.ts`, chạy lại `npm run build`; `dist/` là đầu ra biên dịch,
 không commit. `npm test` biên dịch rồi chạy các test với API giả lập, không ghi lên
-Moodle thật. Không cần cài trình duyệt Playwright riêng: đăng nhập dùng Edge hoặc
-Chrome đã cài sẵn (ưu tiên Edge).
+Moodle thật. `auth login` mở trình duyệt mặc định; không cần cài Chrome, Edge hay
+trình duyệt Playwright riêng.
 
-`auth login` mở cửa sổ Edge riêng nếu có, nếu không thì dùng Chrome. Tự đăng nhập
-Microsoft và hoàn tất MFA nếu có trong vòng 10 phút. CLI kiểm tra token thuộc lần
-đăng nhập này và xác minh tài khoản qua Moodle trước khi lưu. CLI không lưu cookie,
-mật khẩu Microsoft hay private token.
+`auth login` đăng ký tạm handler `coursecli://` theo tài khoản máy, rồi mở trình
+duyệt mặc định. Đăng nhập Microsoft và hoàn tất MFA nếu có trong vòng 10 phút; nếu
+hệ điều hành hỏi, cho phép mở Course CLI. Callback chỉ lưu token sau khi kiểm tra
+passport một lần và xác minh tài khoản qua Moodle. Handler được gỡ khi login kết
+thúc hoặc khi chạy `auth logout`. CLI không lưu cookie, mật khẩu Microsoft hay
+private token.
 
 Token cũ tiếp tục dùng được ở `~/.config/course-cli-spike/auth.json`, hoặc
 `$XDG_CONFIG_HOME/course-cli-spike/auth.json`, quyền file `0600`. Đây là bí mật dạng
 văn bản: không chia sẻ hoặc commit file. `auth status` kiểm tra tài khoản qua API;
-khi hết hạn chạy lại `auth login`. `course auth logout` chỉ xóa token trên máy,
-không thu hồi token phía Moodle; dùng trang security keys của Moodle nếu có quyền.
+khi hết hạn chạy lại `auth login`. `course auth logout` xóa token và handler trên
+máy, không thu hồi token phía Moodle; dùng trang security keys của Moodle nếu có
+quyền.
 
 ## Lệnh đọc
 

@@ -2,8 +2,9 @@
 import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { openDefaultBrowser, registerProtocolHandler, unregisterProtocolHandler } from './protocol.js';
 import { api, decodeAppToken, publicConfig, SITE, type SiteInfo } from './moodle.js';
 import { listAssignments, viewAssignment, assignmentStatus, downloadAssignment, submitAssignment } from './assignments.js';
 import { listQuizzes, viewQuiz, quizAttempts, quizStatus, startQuiz, resumeQuiz, submitQuiz, reviewQuiz } from './quizzes.js';
@@ -12,8 +13,62 @@ import { listCourses, viewCourse, deadlines, grades, notices, type Course, type 
 
 const configDir = join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'course-cli-spike');
 const authFile = join(configDir, 'auth.json');
+const pendingLoginFile = join(configDir, 'pending-login.json');
 const print = (value: unknown) => show(value, { json: true });
 const launchPath = '/admin/tool/mobile/launch.php';
+interface PendingLogin { loginId: string; passport: string; expiresAt: number }
+type LoginResult = { authenticated: true; userid: number; fullname?: string } | { authenticated: false; message: string };
+
+async function saveToken(token: string, directory = configDir) {
+  const tokenFile = join(directory, 'auth.json');
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const temporary = `${tokenFile}.${randomBytes(8).toString('hex')}.tmp`;
+  try {
+    await writeFile(temporary, JSON.stringify({ token }), { mode: 0o600, flag: 'wx' });
+    await rename(temporary, tokenFile);
+  } finally { await rm(temporary, { force: true }); }
+}
+
+async function authCallback(href: string, directory = configDir) {
+  const pendingLoginFile = join(directory, 'pending-login.json');
+  let pending: PendingLogin;
+  try { pending = JSON.parse(await readFile(pendingLoginFile, 'utf8')) as PendingLogin; }
+  catch { throw new Error('Không có lần đăng nhập đang chờ hoặc callback đã được dùng.'); }
+  if (!/^[a-f0-9]{32}$/.test(pending.loginId) || !/^[a-f0-9]{64}$/.test(pending.passport) ||
+      !Number.isSafeInteger(pending.expiresAt) || pending.expiresAt < Date.now()) {
+    throw new Error('Lần đăng nhập đã hết hạn hoặc không hợp lệ.');
+  }
+  const token = decodeAppToken(href, pending.passport);
+  const claimed = join(directory, `pending-login-${pending.loginId}.json`);
+  try { await rename(pendingLoginFile, claimed); }
+  catch { throw new Error('Callback đã được xử lý hoặc lần đăng nhập không còn chờ.'); }
+  try {
+    const info = await api<SiteInfo>(token, 'core_webservice_get_site_info');
+    if (!Number.isSafeInteger(info.userid) || info.userid <= 0) throw new Error('API không trả thông tin sinh viên hợp lệ.');
+    await saveToken(token, directory);
+    const result: LoginResult = { authenticated: true, userid: info.userid, fullname: info.fullname };
+    await writeFile(join(directory, `login-${pending.loginId}.json`), JSON.stringify(result), { mode: 0o600, flag: 'wx' });
+  } catch (error) {
+    await writeFile(join(directory, `login-${pending.loginId}.json`), JSON.stringify({
+      authenticated: false, message: error instanceof Error ? error.message : 'Không xác minh được tài khoản Moodle.',
+    }), { mode: 0o600, flag: 'wx' });
+  } finally { await rm(claimed, { force: true }); }
+}
+
+async function waitForLogin(loginId: string, expiresAt: number): Promise<LoginResult> {
+  const resultFile = join(configDir, `login-${loginId}.json`);
+  while (Date.now() < expiresAt + 35_000) {
+    try {
+      const result = JSON.parse(await readFile(resultFile, 'utf8')) as LoginResult;
+      await rm(resultFile, { force: true });
+      return result;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  throw new Error('Đăng nhập quá thời hạn hoặc chưa hoàn tất. Chạy lại auth login để thử.');
+}
 
 async function login() {
   const config = await publicConfig();
@@ -31,47 +86,35 @@ async function login() {
     oauthsso: new URL(microsoft.url).searchParams.get('id') ?? '',
   }).toString();
 
-  const { chromium } = await import('playwright-core');
-  let browser;
-  for (const channel of ['msedge', 'chrome'] as const) {
-    try {
-      browser = await chromium.launch({ channel, headless: false });
-      break;
-    } catch { /* Try the next supported installed browser. */ }
-  }
-  if (!browser) throw new Error(
-    'Không mở được Microsoft Edge hoặc Google Chrome. Bản thử cần cài một trong hai trình duyệt này.',
-  );
+  const loginId = randomBytes(16).toString('hex');
+  const expiresAt = Date.now() + 600_000;
+  await mkdir(configDir, { recursive: true, mode: 0o700 });
   try {
-    const page = await browser.newPage();
-    console.error('Hãy đăng nhập Microsoft trong cửa sổ trình duyệt vừa mở (tối đa 10 phút).');
+    const previous = JSON.parse(await readFile(pendingLoginFile, 'utf8')) as PendingLogin;
+    if (previous.expiresAt > Date.now()) throw new Error('Đang có lần đăng nhập khác chờ callback.');
+    await rm(pendingLoginFile, { force: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT' && error instanceof Error && error.message === 'Đang có lần đăng nhập khác chờ callback.') throw error;
+  }
+  await writeFile(pendingLoginFile, JSON.stringify({ loginId, passport, expiresAt }), { mode: 0o600, flag: 'wx' });
+  let registered = false;
+  try {
+    registered = true;
+    await registerProtocolHandler({ configDir });
+    console.error('Đang mở trình duyệt mặc định. Đăng nhập Microsoft và cho phép mở Course CLI nếu được hỏi.');
     console.error('CLI chỉ nhận token Moodle; không lưu mật khẩu hoặc cookie Microsoft.');
-    let href;
-    try {
-      await page.goto(launch.href, { waitUntil: 'domcontentloaded', timeout: 60_000 });
-      await page.waitForFunction(({ site, path }) =>
-        location.origin === site && location.pathname === path && document.querySelector('#launchapp'),
-      { site: SITE, path: launchPath }, { timeout: 600_000 });
-      href = await page.locator('#launchapp').getAttribute('href');
-    } catch {
-      throw new Error('Đăng nhập chưa hoàn tất, cửa sổ đã đóng hoặc trường từ chối cấp token. Chạy lại auth login để thử lại.');
-    }
-    const token = decodeAppToken(href, passport);
-    const info = await api<SiteInfo>(token, 'core_webservice_get_site_info');
-    if (!Number.isSafeInteger(info.userid) || info.userid <= 0) {
-      throw new Error('API không trả thông tin sinh viên hợp lệ; chưa lưu token.');
-    }
-    await mkdir(configDir, { recursive: true, mode: 0o700 });
-    const temporary = `${authFile}.${randomBytes(8).toString('hex')}.tmp`;
-    try {
-      await writeFile(temporary, JSON.stringify({ token }), { mode: 0o600, flag: 'wx' });
-      await rename(temporary, authFile);
-    } finally {
-      await rm(temporary, { force: true });
-    }
-    print({ authenticated: true, userid: info.userid, fullname: info.fullname, tokenFile: authFile });
+    await openDefaultBrowser(launch.href);
+    const result = await waitForLogin(loginId, expiresAt);
+    if (!result.authenticated) throw new Error(`Không xác minh được tài khoản Moodle: ${result.message}`);
+    print({ ...result, tokenFile: authFile });
   } finally {
-    await browser.close();
+    if (registered) {
+      try { await unregisterProtocolHandler(); }
+      catch { console.error('Cảnh báo: không gỡ được protocol handler coursecli://; chạy auth logout để dọn cấu hình.'); }
+    }
+    await rm(pendingLoginFile, { force: true });
+    await rm(join(configDir, `pending-login-${loginId}.json`), { force: true });
+    await rm(join(configDir, `login-${loginId}.json`), { force: true });
   }
 }
 
@@ -215,12 +258,18 @@ async function main() {
       microsoft: config.identityproviders?.some((provider) => provider.name === 'Microsoft') });
   } else if (command === 'auth login') {
     await login();
+  } else if (args[0] === 'auth' && args[1] === 'callback') {
+    if (args.length === 3) await authCallback(args[2]);
+    else if (args.length === 5 && args[2] === '--config-dir') await authCallback(args[4], resolve(args[3]));
+    else throw new Error('Callback đăng nhập không hợp lệ.');
   } else if (command === 'auth status') {
     const info = await api<SiteInfo>(await readToken(), 'core_webservice_get_site_info');
     requireId(String(info.userid), 'User ID');
     print({ authenticated: true, userid: info.userid, fullname: info.fullname });
   } else if (command === 'auth logout') {
     await rm(authFile, { force: true });
+    try { await unregisterProtocolHandler(); }
+    catch { console.error('Cảnh báo: không gỡ được protocol handler coursecli://.'); }
     console.log('Đã xóa token trên máy. Token phía Moodle chưa bị thu hồi.');
   } else if (command === 'probe') {
     await probe();

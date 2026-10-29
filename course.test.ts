@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, type TestContext } from 'node:test';
@@ -8,6 +9,16 @@ import { promisify } from 'node:util';
 
 const run = promisify(execFile);
 const token = 'a'.repeat(32);
+async function cliWithDirectory(directory: string, args: string[], preload: string) {
+  try {
+    return { ...await run(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
+      new URL('./course.js', import.meta.url).pathname, ...args],
+    { env: { ...process.env, XDG_CONFIG_HOME: directory } }), code: 0 };
+  } catch (error) {
+    const result = error as Error & { stdout: string; stderr: string; code: number };
+    return { stdout: result.stdout, stderr: result.stderr, code: result.code };
+  }
+}
 async function cli(t: TestContext, args: string[], responses: Record<string, unknown> = {}, authenticated = false) {
   const directory = await mkdtemp(join(tmpdir(), 'course-cli-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -53,6 +64,51 @@ test('CLI auth status verifies the saved token without returning credentials', a
   assert.equal(result.code, 0); assert.equal(result.stderr, '');
   assert.deepEqual(JSON.parse(result.stdout), { authenticated: true, userid: 7, fullname: 'Fixture Student' });
   assert.ok(!result.stdout.includes(token));
+});
+
+test('auth callback verifies the one-time passport and Moodle identity before saving the token', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'course-cli-callback-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const config = join(directory, 'course-cli-spike'); await mkdir(config);
+  const loginId = 'b'.repeat(32); const passport = 'c'.repeat(64); const callbackToken = 'd'.repeat(32);
+  await writeFile(join(config, 'pending-login.json'), JSON.stringify({ loginId, passport, expiresAt: Date.now() + 60_000 }), { mode: 0o600 });
+  const siteId = createHash('md5').update('https://courses.fit.hcmus.edu.vn' + passport).digest('hex');
+  const callback = `coursecli://token=${Buffer.from(`${siteId}:::${callbackToken}`).toString('base64')}`;
+  const preload = `globalThis.fetch = async (_url, options) => {
+    const name = options?.body instanceof URLSearchParams ? options.body.get('wsfunction') : '';
+    if (name !== 'core_webservice_get_site_info') throw new Error('Unexpected API: ' + name);
+    return new Response(JSON.stringify({ userid: 7, fullname: 'Fixture Student' }));
+  };`;
+  const result = await run(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
+    new URL('./course.js', import.meta.url).pathname, 'auth', 'callback', '--config-dir', config, callback]);
+  assert.equal(result.stdout, ''); assert.equal(result.stderr, '');
+  assert.deepEqual(JSON.parse(await readFile(join(config, 'auth.json'), 'utf8')), { token: callbackToken });
+  assert.equal((await stat(join(config, 'auth.json'))).mode & 0o777, 0o600);
+  assert.deepEqual(JSON.parse(await readFile(join(config, `login-${loginId}.json`), 'utf8')),
+    { authenticated: true, userid: 7, fullname: 'Fixture Student' });
+  await assert.rejects(readFile(join(config, 'pending-login.json')));
+  const replay = await cliWithDirectory(directory, ['auth', 'callback', '--config-dir', config, callback],
+    `globalThis.fetch = async () => { console.error('UNEXPECTED_API'); throw new Error('Unexpected API'); };`);
+  assert.equal(replay.code, 1); assert.match(replay.stderr, /không có lần đăng nhập|callback đã được dùng/i);
+  assert.doesNotMatch(replay.stderr, /UNEXPECTED_API/);
+  assert.deepEqual(JSON.parse(await readFile(join(config, 'auth.json'), 'utf8')), { token: callbackToken });
+});
+
+test('auth callback with another login passport never calls Moodle or replaces saved credentials', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'course-cli-callback-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const config = join(directory, 'course-cli-spike'); await mkdir(config);
+  const previousToken = 'e'.repeat(32); const loginId = 'b'.repeat(32); const passport = 'c'.repeat(64);
+  await writeFile(join(config, 'auth.json'), JSON.stringify({ token: previousToken }), { mode: 0o600 });
+  await writeFile(join(config, 'pending-login.json'), JSON.stringify({ loginId, passport, expiresAt: Date.now() + 60_000 }), { mode: 0o600 });
+  const wrongSiteId = createHash('md5').update('https://courses.fit.hcmus.edu.vn' + 'f'.repeat(64)).digest('hex');
+  const callback = `coursecli://token=${Buffer.from(`${wrongSiteId}:::${'d'.repeat(32)}`).toString('base64')}`;
+  const preload = `globalThis.fetch = async () => { console.error('UNEXPECTED_API'); throw new Error('Unexpected API'); };`;
+  const result = await cliWithDirectory(directory, ['auth', 'callback', '--config-dir', config, callback], preload);
+  assert.equal(result.code, 1); assert.match(result.stderr, /không hợp lệ|lần đăng nhập khác/);
+  assert.doesNotMatch(result.stderr, /UNEXPECTED_API/);
+  assert.deepEqual(JSON.parse(await readFile(join(config, 'auth.json'), 'utf8')), { token: previousToken });
+  assert.equal((await readFile(join(config, 'pending-login.json'), 'utf8')).includes(passport), true);
 });
 test('CLI rejects invalid IDs, missing/extra arguments and unsafe flags before reading auth', async t => {
   for (const args of [

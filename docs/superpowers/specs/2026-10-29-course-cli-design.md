@@ -35,8 +35,9 @@ chưa được người dùng chỉ định dưới đây là đề xuất của
 2. **Tự động hóa mọi thao tác qua trình duyệt.** Gần trải nghiệm website hơn, nhưng
    phụ thuộc giao diện, khó kiểm tra kết quả và cần trình duyệt cho từng thao tác.
 
-Giữ luồng Microsoft qua trình duyệt cài sẵn: ưu tiên Microsoft Edge, fallback Google
-Chrome. Các lệnh đọc/ghi học tập gọi API trực tiếp.
+Mở luồng Microsoft bằng trình duyệt mặc định của hệ điều hành. Dùng handler
+`coursecli://` để callback về CLI; không phụ thuộc API automation của trình duyệt.
+Các lệnh đọc/ghi học tập gọi Moodle API trực tiếp.
 Không xây hệ thống kết hợp scrape website để âm thầm thay thế API bị từ chối.
 
 ## Phạm vi bản đầu
@@ -245,8 +246,9 @@ Builder kiểm tra schema thực tế và nguồn Moodle chính thức trước 
 - Chuyển `moodle.mjs` và các phần của bản thử sang `.ts`, giữ hành vi và token hiện có.
   Dùng lại `moodle.ts` cho REST/config/token decoding. Tách auth, thao tác Assignment/Quiz
   và định dạng terminal khi cần để kiểm thử; không dựng framework/plugin system.
-- Dùng `node:util.parseArgs` và thư viện chuẩn cho lệnh/file. Giữ `playwright-core`
-  cho Edge/Chrome đăng nhập. Đề xuất thêm một thư viện chuyển HTML thành text nếu thư viện
+- Dùng `node:util.parseArgs` và thư viện chuẩn cho lệnh/file. Đăng ký protocol handler
+  theo OS để nhận callback auth; không cài hay điều khiển trình duyệt. Đề xuất thêm
+  một thư viện chuyển HTML thành text nếu thư viện
   chuẩn không đủ; không dùng regex tự chế để xử lý HTML/entities.
 - `package.json` có `build`/`test` và `bin` dùng JavaScript đã biên dịch; `dist/`
   không được commit. Chỉ `.ts` là mã nguồn được chỉnh sửa và lưu trong Git.

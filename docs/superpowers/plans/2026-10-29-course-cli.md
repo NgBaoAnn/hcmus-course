@@ -6,7 +6,7 @@
 
 **Architecture:** Compile TypeScript source to `dist/` with `tsc`. Keep `moodle.ts` as the token-safe REST transport and `course.ts` as the command entry point. Add focused modules for terminal input, student reads, assignments, and quizzes; invoke Moodle APIs only through the transport, except the documented file upload/download endpoints.
 
-**Tech Stack:** Node.js >=22, TypeScript ESM with strict type checking, `tsc`, built-in test runner and `fetch`, existing `playwright-core` for Microsoft SSO, and `linkedom` for HTML parsing.
+**Tech Stack:** Node.js >=22, TypeScript ESM with strict type checking, `tsc`, built-in test runner and `fetch`, per-user OS protocol handlers with the system-default browser for Microsoft SSO, and `linkedom` for HTML parsing.
 
 **Spec:** `docs/superpowers/specs/2026-10-29-course-cli-design.md`
 
