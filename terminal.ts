@@ -37,6 +37,7 @@ const timezone = 'Asia/Ho_Chi_Minh';
 const statuses: Record<string, string> = {
   new: 'Chưa nộp', 'not-submitted': 'Chưa nộp', draft: 'Bản nháp', submitted: 'Đã nộp', reopened: 'Được mở lại',
   inprogress: 'Đang làm', 'not-in-progress': 'Chưa bắt đầu', overdue: 'Quá hạn', finished: 'Đã hoàn thành',
+  correct: 'Đúng', incorrect: 'Chưa đúng', partiallycorrect: 'Đúng một phần', needsgrading: 'Chờ chấm',
   abandoned: 'Đã bỏ', saved: 'Đã lưu', uncertain: 'Chưa xác định', conflict: 'Có xung đột', unsupported: 'Chưa hỗ trợ',
   expired: 'Hết hạn', unknown: 'Không rõ',
 };

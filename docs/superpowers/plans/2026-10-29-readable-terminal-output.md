@@ -55,6 +55,7 @@
 
 - [x] Apply card output to course, assignment, quiz, deadline, grade, notice, and corresponding detail views.
 - [x] Add a CLI integration assertion that assignment list output uses a labeled card and a local date rather than tabs or a Unix timestamp; verified red then green.
+- [x] Preserve quiz review question slots, answer details, and Moodle link in cards; regression test observed red then green.
 - [x] Make deadline and assignment dates readable and distinguish overdue/cutoff/state fields without altering source values.
 - [x] Keep JSON branches, API return shapes, warnings, and mutation confirmation text unchanged.
 - [x] Run `npm test`, `git diff --check`, and inspect sample output for deadline and detail commands.

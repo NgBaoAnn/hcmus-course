@@ -222,7 +222,12 @@ async function main() {
         `Nộp: ${formatLocalDate(attempt.timefinish)}`],
     })));
     else if ('questions' in result) printCards(`Bài quiz đã nộp${result.grade ? ` · Điểm ${result.grade}` : ''}`,
-      result.questions.map(question => ({ title: `Câu ${question.questionnumber}`, lines: [question.status ? `Trạng thái: ${formatStatus(question.status)}` : '', question.text ?? ''] })));
+      [...result.questions.map(question => ({
+        title: `Câu ${question.questionnumber || question.slot}`,
+        lines: [question.status ? `Trạng thái: ${formatStatus(question.status)}` : '', question.text ?? '',
+          ...Object.entries(question).filter(([key]) => !['html', 'text', 'slot', 'questionnumber', 'status', 'page', 'type'].includes(key))
+            .map(([key, value]) => `${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`)],
+      })), { title: 'Mở bài review trên Moodle', lines: [result.webUrl] }]);
     else show(result);
   } else if (args[0] === 'assignment') {
     const action = args[1];

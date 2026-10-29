@@ -80,6 +80,22 @@ test('human assignment lists use readable cards and local dates instead of Unix 
   assert.doesNotMatch(result.stdout, /1793332800|\t/);
 });
 
+test('human quiz reviews retain question slots, answers, and the Moodle review link', async t => {
+  const attempt = { id: 8, quiz: 6, userid: 7, uniqueid: 91, attempt: 1, state: 'finished', currentpage: 0,
+    timestart: 1793232000, timemodified: 1793232100, timefinish: 1793232200 };
+  const result = await cli(t, ['quiz', 'review', '8'], {
+    mod_quiz_get_quizzes_by_courses: { quizzes: [quiz], warnings: [] },
+    mod_quiz_get_user_attempts: { attempts: [attempt], warnings: [] },
+    mod_quiz_get_attempt_review: { attempt, questions: [{ slot: 1, html: '<p>Prompt</p>', response: 'A', rightanswer: 'B', status: 'incorrect' }], grade: '5/10', warnings: [] },
+  }, true);
+  assert.equal(result.code, 0); assert.equal(result.stderr, '');
+  assert.match(result.stdout, /Câu 1/);
+  assert.match(result.stdout, /Trạng thái: Chưa đúng/);
+  assert.match(result.stdout, /response: A/);
+  assert.match(result.stdout, /rightanswer: B/);
+  assert.match(result.stdout, /review\.php\?attempt=8/);
+});
+
 test('auth callback verifies the one-time passport and Moodle identity before saving the token', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'course-cli-callback-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
