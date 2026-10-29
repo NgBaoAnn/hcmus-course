@@ -8,13 +8,15 @@ import { openDefaultBrowser, registerProtocolHandler, unregisterProtocolHandler 
 import { api, decodeAppToken, publicConfig, SITE, type SiteInfo } from './moodle.js';
 import { listAssignments, viewAssignment, assignmentStatus, downloadAssignment, submitAssignment } from './assignments.js';
 import { listQuizzes, viewQuiz, quizAttempts, quizStatus, startQuiz, resumeQuiz, submitQuiz, reviewQuiz } from './quizzes.js';
-import { render, requireId, show } from './terminal.js';
+import { formatCards, formatLocalDate, formatStatus, render, requireId, show } from './terminal.js';
 import { listCourses, viewCourse, deadlines, grades, notices, type Course, type AssignmentsResponse } from './student.js';
 
 const configDir = join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'course-cli-spike');
 const authFile = join(configDir, 'auth.json');
 const pendingLoginFile = join(configDir, 'pending-login.json');
 const print = (value: unknown) => show(value, { json: true });
+const printCards = (title: string, cards: { title: string; lines: string[] }[]) => console.log(formatCards(title, cards));
+const field = (label: string, value: string | number | null | undefined) => `${label}: ${value ?? 'Không rõ'}`;
 const launchPath = '/admin/tool/mobile/launch.php';
 interface PendingLogin { loginId: string; passport: string; expiresAt: number }
 type LoginResult = { authenticated: true; userid: number; fullname?: string } | { authenticated: false; message: string };
@@ -189,11 +191,39 @@ async function main() {
       : action === 'submit' ? await submitQuiz(token, id) : await reviewQuiz(token, id);
     for (const warning of result.warnings ?? []) console.error(`Cảnh báo: ${render(warning.message || warning.warningcode)}`);
     if (values.json) show(result, { json: true });
-    else if ('quizzes' in result) show(result.quizzes.map(q => `${q.id}\t${q.name}\nMôn: ${q.course}; thời lượng: ${q.timelimit ?? 'không rõ'} giây; lượt: ${q.attempts?.length ?? 'không rõ'}/${q.allowedAttempts ?? 'không rõ'} (0 = không giới hạn)\nMở: ${q.timeopenLocal}; đóng: ${q.timecloseLocal}\n${q.introText}\n${q.access ? [...q.access.accessrules, ...q.access.preventaccessreasons].join('\n') : 'Chưa đọc đủ điều kiện truy cập.'}\n${q.webUrl}`).join('\n\n') || 'Không có quiz.');
+    else if ('quizzes' in result) printCards(`Quiz · ${result.quizzes.length}`, result.quizzes.map(q => ({
+      title: `#${q.id} · ${q.name}`,
+      lines: [field('Môn', q.course), field('Thời lượng', q.timelimit ? `${q.timelimit} giây` : 'Không giới hạn'),
+        `Lượt: ${q.attempts?.length ?? 'Không rõ'}/${q.allowedAttempts ?? 'Không rõ'}${q.allowedAttempts === 0 ? ' (không giới hạn)' : ''}`,
+        `Mở: ${formatLocalDate(q.timeopen)} · Đóng: ${formatLocalDate(q.timeclose)}`,
+        q.introText ? `Đề: ${q.introText}` : '',
+        ...(q.access ? [...q.access.accessrules, ...q.access.preventaccessreasons] : ['Chưa đọc đủ điều kiện truy cập.']), q.webUrl,
+      ].filter(Boolean),
+    })));
     else if ('state' in result) {
-      show(`${result.state}: ${result.message}\n${result.webUrl}`);
+      printCards('Kết quả quiz', [{ title: formatStatus(result.state), lines: [result.message, result.webUrl] }]);
       if (['uncertain', 'conflict', 'unsupported', 'expired', 'abandoned'].includes(result.state)) process.exitCode = 1;
-    } else show(result);
+    } else if ('allowedAttempts' in result && 'introText' in result) printCards('Chi tiết quiz', [{
+      title: `#${result.id} · ${result.name}`,
+      lines: [field('Môn', result.course), `Thời lượng: ${result.timelimit ? `${result.timelimit} giây` : 'Không giới hạn'}`,
+        `Lượt đã dùng: ${result.attempts.length}/${result.allowedAttempts || 'Không giới hạn'}`,
+        `Mở: ${formatLocalDate(result.timeopen)} · Đóng: ${formatLocalDate(result.timeclose)}`, result.introText || 'Không có mô tả.',
+        ...result.access.accessrules, ...result.access.preventaccessreasons, result.webUrl],
+    }]);
+    else if ('attempt' in result && 'quiz' in result) printCards('Trạng thái quiz', [{
+      title: `Attempt #${result.attempt.id} · ${formatStatus(result.attempt.state)}`,
+      lines: [field('Quiz ID', result.quiz.id), `Lượt: ${result.attempt.attempt}`,
+        `Bắt đầu: ${formatLocalDate(result.attempt.timestart)}`, `Cập nhật: ${formatLocalDate(result.attempt.timemodified)}`,
+        'Hạn hiệu lực và số câu đã trả lời không có từ API chỉ đọc.', result.webUrl],
+    }]);
+    else if ('attempts' in result) printCards(`Lượt làm quiz #${result.quizid}`, result.attempts.map(attempt => ({
+      title: `Lượt #${attempt.id} · ${formatStatus(attempt.state)}`,
+      lines: [field('Lượt', attempt.attempt), `Bắt đầu: ${formatLocalDate(attempt.timestart)}`,
+        `Nộp: ${formatLocalDate(attempt.timefinish)}`],
+    })));
+    else if ('questions' in result) printCards(`Bài quiz đã nộp${result.grade ? ` · Điểm ${result.grade}` : ''}`,
+      result.questions.map(question => ({ title: `Câu ${question.questionnumber}`, lines: [question.status ? `Trạng thái: ${formatStatus(question.status)}` : '', question.text ?? ''] })));
+    else show(result);
   } else if (args[0] === 'assignment') {
     const action = args[1];
     if (!['list', 'view', 'status', 'download', 'submit'].includes(action)) throw new Error('Lệnh assignment không hợp lệ.');
@@ -217,11 +247,37 @@ async function main() {
       : await submitAssignment(token, id, { files: positionals.slice(1), textFile: typeof values['text-file'] === 'string' ? values['text-file'] : undefined, draft: values.draft === true });
     for (const warning of result.warnings ?? []) console.error(`Cảnh báo: ${render(warning.message || warning.warningcode)}`);
     if (values.json) show(result, { json: true });
-    else if ('assignments' in result) show(result.assignments.map(a => `${a.id}\t${a.name}\nMôn: ${a.coursename} (${a.courseid}); hạn (Unix): ${a.duedate}\n${a.webUrl}`).join('\n\n') || 'Không có bài tập.');
-    else if ('introText' in result) show(`${result.name} (${result.id})\n${result.introText}\n${JSON.stringify({ files: result.introattachments, configs: result.configs, due: result.duedate, cutoff: result.cutoffdate, status: result.status }, null, 2)}\n${result.webUrl}`);
+    else if ('assignments' in result) printCards(`Bài tập · ${result.assignments.length}`, result.assignments.map(a => ({
+      title: `#${a.id} · ${a.name}`,
+      lines: [field('Môn', `${a.coursename} (${a.courseid})`), `Hạn: ${formatLocalDate(a.duedate)}`,
+        ...(a.cutoffdate > 0 ? [`Hạn cuối nhận bài: ${formatLocalDate(a.cutoffdate)}`] : []), a.webUrl],
+    })));
+    else if ('introText' in result) {
+      const submission = result.status.lastattempt?.teamsubmission ?? result.status.lastattempt?.submission;
+      printCards('Chi tiết bài tập', [{
+        title: `#${result.id} · ${result.name}`,
+        lines: [field('Môn', `${result.coursename} (${result.courseid})`), `Mở nhận bài: ${formatLocalDate(result.allowsubmissionsfromdate)}`,
+          `Hạn: ${formatLocalDate(result.duedate)}`,
+          ...(result.cutoffdate > 0 ? [`Hạn cuối nhận bài: ${formatLocalDate(result.cutoffdate)}`] : []),
+          `Hình thức nộp: ${result.configs.filter(config => config.subtype === 'assignsubmission' && config.name === 'enabled' && config.value === '1').map(config => config.plugin).join(', ') || 'Không rõ'}`,
+          `Nộp nhóm: ${result.teamsubmission ? 'Có' : 'Không'} · Lưu nháp: ${result.submissiondrafts ? 'Có' : 'Không'}`,
+          `Trạng thái: ${formatStatus(submission?.status ?? 'unknown')}`, result.introText || 'Không có mô tả.',
+          ...(result.status.feedback ? [`Phản hồi: ${JSON.stringify(result.status.feedback)}`] : []),
+          ...(result.introattachments ?? []).map(file => `Tệp đề: ${file.filename} (${file.filesize} bytes)`), result.webUrl],
+      }]);
+    }
     else if ('state' in result) {
-      show(`${result.state}: ${result.message}\n${result.pendingMembers?.length ? `Thành viên còn cần xác nhận: ${result.pendingMembers.join(', ')}\n` : ''}${result.webUrl}`);
+      printCards('Kết quả nộp bài', [{ title: formatStatus(result.state), lines: [result.message,
+        ...(result.pendingMembers?.length ? [`Thành viên còn cần xác nhận: ${result.pendingMembers.join(', ')}`] : []), result.webUrl] }]);
       if (result.state === 'uncertain' || (!values.draft && result.state !== 'submitted')) process.exitCode = 1;
+    } else if ('downloaded' in result) printCards('Đã tải file', result.downloaded.map(path => ({ title: path, lines: [] })));
+    else if ('lastattempt' in result) {
+      const attempt = result.lastattempt;
+      const submission = attempt?.teamsubmission ?? attempt?.submission;
+      printCards('Trạng thái bài tập', [{ title: submission ? formatStatus(submission.status) : 'Không có lượt nộp',
+        lines: [field('Lượt', submission?.attemptnumber), `Có thể sửa: ${attempt?.canedit ? 'Có' : 'Không'}`,
+          `Được phép nộp: ${attempt?.cansubmit ? 'Có' : 'Không'}`,
+          ...(result.feedback ? [`Phản hồi: ${JSON.stringify(result.feedback)}`] : [])] }]);
     } else show(result);
   } else if (['list', 'view', 'deadlines', 'grades', 'notices'].includes(args[0])) {
     const action = args[0];
@@ -242,15 +298,27 @@ async function main() {
       : action === 'grades' ? await grades(token, id) : await notices(token, id);
     for (const warning of result.warnings ?? []) console.error(`Cảnh báo: ${render(warning.message || warning.warningcode)}`);
     if (values.json) show(result, { json: true });
-    else if ('courses' in result) show(result.courses.map((course) => `${course.id}\t${course.fullname}`).join('\n') || 'Không có môn học.');
-    else if ('sections' in result) show([result.webUrl, ...result.sections.map((section) => [section.name, section.summaryText,
-      ...section.modules.map((module) => `${module.modname}: ${module.name}\n${module.descriptionText}\n${module.url || ''}`)].join('\n'))].join('\n\n'));
-    else if ('deadlines' in result) show(result.deadlines.map((deadline) =>
-      `${deadline.type} ${deadline.id}: ${deadline.name}\n${deadline.dueLocal}${deadline.overdue ? ' — quá hạn' : ''}\nTrạng thái: ${deadline.state}${deadline.attemptsRemaining != null ? `; số lượt còn: ${deadline.attemptsRemaining}` : ''}${deadline.cutoffLocal ? `\nHạn cuối nhận bài (cutoff): ${deadline.cutoffLocal}` : ''}\n${deadline.webUrl}`
-    ).join('\n\n') || 'Không có deadline trong khoảng đã chọn.');
-    else if ('usergrades' in result) show((result.usergrades ?? []).flatMap((entry) => (entry.gradeitems ?? []).map((item) =>
-      `${render(item.itemname)}\t${render(item.gradeformatted ?? '-')}\t${render(item.rangeformatted ?? '')}${item.gradehiddenbydate || item.hidden ? ' (ẩn)' : ''}`)).join('\n') || 'Chưa có điểm được công bố.');
-    else if ('notices' in result) show(result.notices.map((notice) => `${notice.subject}\n${notice.createdLocal || ''}\n${notice.messageText}\n${notice.webUrl}`).join('\n\n') || 'Không có thông báo.');
+    else if ('courses' in result) printCards(`Môn học · ${result.courses.length}`, result.courses.map(course => ({ title: `#${course.id} · ${course.fullname}`, lines: [course.webUrl] })));
+    else if ('sections' in result) printCards(`Nội dung môn học · ${result.sections.length}`, result.sections.map(section => ({
+      title: section.name,
+      lines: [section.summaryText, ...section.modules.flatMap(module => [`${module.modname}: ${module.name}`, module.descriptionText, module.url ?? '']).filter(Boolean)],
+    })).concat([{ title: 'Mở trên Moodle', lines: [result.webUrl] }]));
+    else if ('deadlines' in result) printCards(`Hạn nộp / đóng quiz · ${result.deadlines.length}`, result.deadlines.map(deadline => ({
+      title: `${deadline.type === 'assignment' ? 'Bài tập' : 'Quiz'} #${deadline.id} · ${deadline.name}${deadline.overdue ? ' · Quá hạn' : ''}`,
+      lines: [field('Môn ID', deadline.courseid), `Hạn: ${formatLocalDate(deadline.due)}`,
+        `Trạng thái: ${formatStatus(deadline.state)}`,
+        ...(deadline.cutoff && deadline.cutoff > 0 ? [`Hạn cuối nhận bài: ${formatLocalDate(deadline.cutoff)}`] : []),
+        ...(deadline.attemptsRemaining != null ? [`Lượt còn: ${deadline.attemptsRemaining}`] : []), deadline.webUrl],
+    })));
+    else if ('usergrades' in result) printCards(`Điểm · ${(result.usergrades ?? []).reduce((count, entry) => count + (entry.gradeitems?.length ?? 0), 0)}`,
+      (result.usergrades ?? []).flatMap(entry => (entry.gradeitems ?? []).map(item => ({
+      title: render(item.itemname ?? 'Mục điểm'),
+      lines: [`Điểm: ${render(item.gradeformatted ?? 'Chưa có')}${item.rangeformatted ? ` / ${render(item.rangeformatted)}` : ''}`,
+        ...(item.gradehiddenbydate || item.hidden ? ['Đang ẩn'] : [])],
+    }))));
+    else if ('notices' in result) printCards(`Thông báo · ${result.notices.length}`, result.notices.map(notice => ({
+      title: notice.subject, lines: [field('Diễn đàn', notice.forumname), `Đăng lúc: ${formatLocalDate(notice.created)}`, notice.messageText, notice.webUrl],
+    })));
   } else if (command === 'doctor') {
     const config = await publicConfig();
     print({ site: SITE, name: config.sitename, webservices: config.enablewebservices,

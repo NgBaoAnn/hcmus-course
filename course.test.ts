@@ -66,6 +66,20 @@ test('CLI auth status verifies the saved token without returning credentials', a
   assert.ok(!result.stdout.includes(token));
 });
 
+test('human assignment lists use readable cards and local dates instead of Unix timestamps', async t => {
+  const result = await cli(t, ['assignment', 'list'], {
+    core_webservice_get_site_info: user,
+    core_enrol_get_users_courses: courses,
+    mod_assign_get_assignments: { courses: [{ id: 12, fullname: 'Algorithms', assignments: [assignment] }], warnings: [] },
+  }, true);
+  assert.equal(result.code, 0); assert.equal(result.stderr, '');
+  assert.match(result.stdout, /Bài tập/);
+  assert.match(result.stdout, /Essay/);
+  assert.match(result.stdout, /Algorithms \(12\)/);
+  assert.match(result.stdout, /Hạn: 30\/10\/2026 11:00/);
+  assert.doesNotMatch(result.stdout, /1793332800|\t/);
+});
+
 test('auth callback verifies the one-time passport and Moodle identity before saving the token', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'course-cli-callback-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
