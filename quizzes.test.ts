@@ -178,7 +178,7 @@ test('supported HTML controls map actual shuffled values and preserve enter/expl
     ['truefalse', '<input type="radio" name="q91:1_answer" value="0"><input type="radio" name="q91:1_answer" value="1">', '1', { 'q91:1_answer': '0' }],
     ['shortanswer', '<input type="text" name="q91:1_answer" value="old">', 'new answer', { 'q91:1_answer': 'new answer' }],
     ['numerical', '<input type="text" name="q91:1_answer" value=""><select name="q91:1_unit"><option value="">Unit</option><option value="kg">kg</option></select>', '2.5|1', { 'q91:1_answer': '2.5', 'q91:1_unit': 'kg' }],
-    ['match', '<select name="q91:1_sub2"><option value="0">Choose</option><option value="77">B</option></select>', '1', { 'q91:1_sub2': '77' }],
+    ['match', '<div class="ablock"><table class="answer"><tbody><tr><td class="text">Stem B</td><td><select name="q91:1_sub2"><option value="0">Choose</option><option value="77">B</option></select></td></tr></tbody></table></div>', '1', { 'q91:1_sub2': '77' }],
     ['gapselect', '<select name="q91:1_p1"><option value="0">Choose</option><option value="4">Gap</option></select>', '1', { 'q91:1_p1': '4' }],
     ['essay', '<textarea name="q91:1_answer" class="qtype_essay_plain">old</textarea><input type="hidden" name="q91:1_answerformat" value="2">', 'my essay', { 'q91:1_answer': 'my essay', 'q91:1_answerformat': '2' }],
     ['shortanswer', '<input type="text" name="q91:1_answer" value="old">', ':clear', { 'q91:1_answer': '' }],
@@ -339,4 +339,46 @@ test('submit detects an autosaved answer change even with unchanged sequence met
     return true;
   } });
   assert.equal(result.state, 'conflict'); assert.equal(f.calls.some(c => c.name === 'mod_quiz_process_attempt'), false);
+});
+
+test('matching prompt pairs every rendered stem with its own control and shuffled choices', async t => {
+  const f = await setup(t);
+  const q = question('match', `<div class="ablock"><table class="answer" role="presentation"><tbody>
+    <tr class="r0"><td class="text" id="q91:1_sub2_itemtext"><p>France &amp; Monaco</p></td><td class="control">
+      <label class="accesshide" for="menuq91:1_sub2">Answer 1</label>
+      <select name="q91:1_sub2" id="menuq91:1_sub2" aria-describedby="q91:1_qtext q91:1_sub2_itemtext">
+        <option value="0">Choose</option><option value="77">Tokyo</option><option value="31">Paris</option>
+      </select></td></tr>
+    <tr class="r1"><td class="text" id="q91:1_sub0_itemtext"><strong>Japan</strong></td><td class="control">
+      <label class="accesshide" for="menuq91:1_sub0">Answer 2</label>
+      <select name="q91:1_sub0" id="menuq91:1_sub0" aria-describedby="q91:1_sub0_itemtext">
+        <option value="0">Choose</option><option value="77">Tokyo</option><option value="31">Paris</option>
+      </select></td></tr>
+  </tbody></table></div>`);
+  q.html = q.html.replace('<div class="qtext">Question 1?</div>', '<div class="qtext" id="q91:1_qtext">Match countries to capitals</div>');
+  f.pages.set(0, [q]);
+  let questionPrompt = '';
+  await resumeQuiz(token, 8, { ask: async prompt => {
+    if (prompt.includes('Nhập yes')) return 'yes';
+    if (prompt.includes('câu 1')) { questionPrompt = prompt; return '2|1'; }
+    return 'quit';
+  } });
+  assert.match(questionPrompt, /Match countries to capitals/);
+  assert.match(questionPrompt, /1\. France & Monaco[^\n]*1\) Tokyo; 2\) Paris/);
+  assert.match(questionPrompt, /2\. Japan[^\n]*1\) Tokyo; 2\) Paris/);
+  assert.ok(questionPrompt.indexOf('France & Monaco') < questionPrompt.indexOf('Japan'));
+  const saves = f.calls.filter(c => c.name === 'mod_quiz_save_attempt');
+  assert.equal(saves.length, 1);
+  const posted = data(saves[0].body);
+  assert.equal(posted['q91:1_sub2'], '31');
+  assert.equal(posted['q91:1_sub0'], '77');
+  assert.equal(posted['q91:1_:sequencecheck'], '1');
+});
+
+test('matching controls without a readable associated stem cannot accept answers', async t => {
+  const f = await setup(t);
+  f.pages.set(0, [question('match', '<select name="q91:1_sub2"><option value="0">Choose</option><option value="77">Paris</option></select>')]);
+  const result = await resumeQuiz(token, 8, { ask: answer('yes') });
+  assert.equal(result.state, 'unsupported');
+  assert.equal(f.calls.some(c => c.name === 'mod_quiz_save_attempt'), false);
 });

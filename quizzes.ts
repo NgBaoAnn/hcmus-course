@@ -22,7 +22,7 @@ interface Page { attempt: Attempt; questions: Question[]; nextpage: number; warn
 interface AttemptAccess { endtime?: number; isfinished: boolean; preventnewattemptreasons: string[]; warnings?: MoodleWarning[] }
 interface Summary { questions: Question[]; totalunanswered?: number; warnings?: MoodleWarning[] }
 interface QuizResult { state: string; attemptid: number; message: string; webUrl: string; warnings: MoodleWarning[] }
-interface Field { name: string; kind: string; value: string; choices: { value: string; text: string }[]; clear?: string }
+interface Field { name: string; kind: string; value: string; choices: { value: string; text: string }[]; clear?: string; stem?: string }
 interface Form { fields: Field[]; sequenceName: string; sequence: string; values: Record<string, string>; fingerprint: string; text: string; media: boolean }
 const supported = new Set(['description', 'multichoice', 'truefalse', 'shortanswer', 'numerical', 'match', 'gapselect', 'essay']);
 const safeRules = new Set(['numattempts', 'openclosedate', 'timelimit', 'delaybetweenattempts', 'password']);
@@ -220,8 +220,11 @@ function formFor(q: Question, attempt: Attempt): Form {
       if (!current || options.some(o => !o.hasAttribute('value'))) throw new Error('Select thiếu giá trị.');
       const clear = options.find(o => ['0', ''].includes(o.getAttribute('value')!))?.getAttribute('value') ?? undefined;
       const choices = options.filter(o => o.getAttribute('value') !== clear).map(o => ({ value: o.getAttribute('value')!, text: render(o.innerHTML) }));
+      const stemNode = q.type === 'match' ? e.closest('tr')?.querySelector('td.text') : null;
+      const stem = stemNode ? render(stemNode.innerHTML).replace(/\s+/g, ' ').trim() : undefined;
+      if (q.type === 'match' && !stem) throw new Error('Không đọc được nội dung cần ghép của câu matching; dùng website.');
       values[name] = current.getAttribute('value')!;
-      fields.push({ name, kind, value: values[name], choices, clear });
+      fields.push({ name, kind, value: values[name], choices, clear, stem });
     } else {
       values[name] = kind === 'textarea' ? e.textContent ?? '' : e.getAttribute('value') ?? '';
       fields.push({ name, kind, value: values[name], choices: [] });
@@ -260,7 +263,7 @@ function answerFields(form: Form, input: string): Record<string, string> {
   return values;
 }
 function promptFor(q: Question, form: Form, attemptid: number, endtime?: number, timing?: ResponseTiming) {
-  const options = form.fields.map((f, i) => `${form.fields.length > 1 ? `${i + 1}. ` : ''}${f.kind}: ${f.choices.map((c, j) => `${j + 1}) ${c.text}`).join('; ')}`).join('\n');
+  const options = form.fields.map((f, i) => `${form.fields.length > 1 ? `${i + 1}. ` : ''}${f.stem ? `${f.stem} — ` : ''}${f.kind}: ${f.choices.map((c, j) => `${j + 1}) ${c.text}`).join('; ')}`).join('\n');
   return `Trang ${q.page + 1}, câu ${q.questionnumber} (${q.type}), ${render(q.status)}\n${form.text}\n${options}\n${form.media ? `Có hình/âm thanh/công thức không thể hiện đầy đủ; xem ${attemptUrl(attemptid)} hoặc website quiz.\n` : ''}${endtime ? `Hạn: ${date(endtime)}; còn khoảng ${Math.max(0, Math.floor(endtime - serverNow(timing!)))} giây.\n` : ''}Nhập câu trả lời${form.fields.length > 1 ? ' (các control ngăn bằng |; checkbox chọn số cách nhau bằng dấu phẩy)' : ''}; Enter giữ nguyên; :clear xóa; :quit thoát:`;
 }
 
