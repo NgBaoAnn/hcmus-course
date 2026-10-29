@@ -33,14 +33,18 @@ async function login() {
 
   const { chromium } = await import('playwright-core');
   let browser;
-  try {
-    browser = await chromium.launch({ channel: 'chrome', headless: false });
-  } catch {
-    throw new Error('Không mở được Google Chrome. Bản thử cần cài Google Chrome trên máy.');
+  for (const channel of ['msedge', 'chrome'] as const) {
+    try {
+      browser = await chromium.launch({ channel, headless: false });
+      break;
+    } catch { /* Try the next supported installed browser. */ }
   }
+  if (!browser) throw new Error(
+    'Không mở được Microsoft Edge hoặc Google Chrome. Bản thử cần cài một trong hai trình duyệt này.',
+  );
   try {
     const page = await browser.newPage();
-    console.error('Hãy đăng nhập Microsoft trong cửa sổ Chrome vừa mở (tối đa 10 phút).');
+    console.error('Hãy đăng nhập Microsoft trong cửa sổ trình duyệt vừa mở (tối đa 10 phút).');
     console.error('CLI chỉ nhận token Moodle; không lưu mật khẩu hoặc cookie Microsoft.');
     let href;
     try {
