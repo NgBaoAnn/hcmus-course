@@ -24,7 +24,7 @@ If `course auth status` says unauthenticated, run `course auth login`. It opens 
 | Resources | `course materials list --course <course-id>` |
 | Assignment and quiz details | `course assignment list|view|status`, `course quiz list|view|attempts|status|review` |
 
-Run `course --help` and command help for the full command inventory. In a terminal, omitted IDs open a selector. For agents and scripts, pass IDs explicitly. Read commands emit JSON when stdout is not a TTY; `--json` also requests JSON in a terminal but is intentionally hidden from user-facing help. Parse stdout and check the exit code, then inspect `warnings` in JSON and diagnostics on stderr. Warnings mean the answer may be incomplete.
+Run `course --help` for the full command inventory and syntax; subcommands do not support `--help`. In a terminal, omitted IDs open a selector. For agents and scripts, pass IDs explicitly. Read commands emit JSON when stdout is not a TTY; `--json` also requests JSON in a terminal but is intentionally hidden from user-facing help. Parse stdout and check the exit code, then inspect `warnings` in JSON and diagnostics on stderr. Warnings mean the answer may be incomplete.
 
 ## ID map
 
