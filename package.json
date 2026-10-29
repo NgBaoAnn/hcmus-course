@@ -1,25 +1,11 @@
 {
-  "name": "course-cli",
-  "version": "0.0.0",
+  "name": "portal-cli",
   "private": true,
-  "type": "module",
-  "bin": {
-    "course": "./dist/course.js"
-  },
+  "workspaces": ["packages/cli", "packages/mcp"],
   "scripts": {
-    "build": "tsc",
-    "test": "npm run build && node --test dist/*.test.js",
-    "start": "node dist/course.js",
+    "build": "npm run build --workspace course-cli",
+    "test": "npm run test --workspace course-cli",
+    "start": "node packages/cli/dist/course.js",
     "prepare": "npm run build"
-  },
-  "engines": {
-    "node": ">=22"
-  },
-  "dependencies": {
-    "linkedom": "^0.18.14"
-  },
-  "devDependencies": {
-    "@types/node": "^26.6.6",
-    "typescript": "^7.0.2"
   }
 }

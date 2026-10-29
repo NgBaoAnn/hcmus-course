@@ -1,6 +1,11 @@
-# Course CLI
+# Course
 
-CLI TypeScript cho sinh viên dùng `https://courses.fit.hcmus.edu.vn`: đọc môn học,
+Monorepo npm workspaces gồm hai package:
+
+- `packages/cli`: CLI TypeScript hiện có, lệnh `course`.
+- `packages/mcp`: chỗ dành cho MCP server sẽ phát triển sau; chưa có server chạy.
+
+CLI cho sinh viên dùng `https://courses.fit.hcmus.edu.vn`: đọc môn học,
 đề và tài liệu, deadline, lịch, tiến độ, điểm, thông báo, diễn đàn; nộp Moodle
 Assignment và tự nhập câu trả lời quiz qua API. Trình duyệt chỉ dùng cho đăng nhập
 Microsoft.
@@ -10,8 +15,10 @@ Microsoft.
 Cần Node.js **22 trở lên** và trình duyệt mặc định của hệ điều hành cho `auth login`.
 
 ```sh
-npm install          # prepare tự biên dịch TypeScript vào dist/
+npm install          # biên dịch CLI vào packages/cli/dist/
+cd packages/cli
 npm link             # đăng ký lệnh course trên máy
+cd ../..
 course --help
 course doctor
 course auth login
@@ -22,12 +29,13 @@ Không dùng `npm link` vẫn chạy được từ thư mục dự án:
 
 ```sh
 npm run build
-node dist/course.js --help
-node dist/course.js list
+node packages/cli/dist/course.js --help
+node packages/cli/dist/course.js list
 ```
 
-Sau khi sửa mã nguồn `.ts`, chạy lại `npm run build`; `dist/` là đầu ra biên dịch,
-không commit. `npm test` biên dịch rồi chạy các test với API giả lập, không ghi lên
+Sau khi sửa mã nguồn trong `packages/cli/src`, chạy lại `npm run build` ở thư mục
+gốc; `packages/cli/dist/` là đầu ra biên dịch, không commit. `npm test` ở thư mục
+gốc biên dịch rồi chạy các test với API giả lập, không ghi lên
 Moodle thật. `auth login` mở trình duyệt mặc định; không cần cài Chrome, Edge hay
 trình duyệt Playwright riêng.
 
