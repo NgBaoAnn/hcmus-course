@@ -96,6 +96,17 @@ test('human quiz reviews retain question slots, answers, and the Moodle review l
   assert.match(result.stdout, /review\.php\?attempt=8/);
 });
 
+test('human quiz attempt lists retain the Moodle link', async t => {
+  const result = await cli(t, ['quiz', 'attempts', '6'], {
+    mod_quiz_get_quizzes_by_courses: { quizzes: [quiz], warnings: [] },
+    mod_quiz_get_user_attempts: { attempts: [{ id: 8, quiz: 6, userid: 7, uniqueid: 91, attempt: 1,
+      state: 'inprogress', currentpage: 0, timestart: 1793232000, timemodified: 1793232100, timefinish: 0 }], warnings: [] },
+  }, true);
+  assert.equal(result.code, 0); assert.equal(result.stderr, '');
+  assert.match(result.stdout, /Lượt #8 · Đang làm/);
+  assert.match(result.stdout, /mod\/quiz\/view\.php\?id=60/);
+});
+
 test('auth callback verifies the one-time passport and Moodle identity before saving the token', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'course-cli-callback-'));
   t.after(() => rm(directory, { recursive: true, force: true }));

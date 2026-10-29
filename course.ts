@@ -211,16 +211,16 @@ async function main() {
         ...result.access.accessrules, ...result.access.preventaccessreasons, result.webUrl],
     }]);
     else if ('attempt' in result && 'quiz' in result) printCards('Trạng thái quiz', [{
-      title: `Attempt #${result.attempt.id} · ${formatStatus(result.attempt.state)}`,
+      title: `Lượt #${result.attempt.id} · ${formatStatus(result.attempt.state)}`,
       lines: [field('Quiz ID', result.quiz.id), `Lượt: ${result.attempt.attempt}`,
         `Bắt đầu: ${formatLocalDate(result.attempt.timestart)}`, `Cập nhật: ${formatLocalDate(result.attempt.timemodified)}`,
         'Hạn hiệu lực và số câu đã trả lời không có từ API chỉ đọc.', result.webUrl],
     }]);
-    else if ('attempts' in result) printCards(`Lượt làm quiz #${result.quizid}`, result.attempts.map(attempt => ({
+    else if ('attempts' in result) printCards(`Lượt làm quiz #${result.quizid}`, [...result.attempts.map(attempt => ({
       title: `Lượt #${attempt.id} · ${formatStatus(attempt.state)}`,
       lines: [field('Lượt', attempt.attempt), `Bắt đầu: ${formatLocalDate(attempt.timestart)}`,
-        `Nộp: ${formatLocalDate(attempt.timefinish)}`],
-    })));
+        `Nộp: ${attempt.timefinish > 0 ? formatLocalDate(attempt.timefinish) : 'Chưa nộp'}`],
+    })), { title: 'Mở quiz trên Moodle', lines: [result.webUrl] }]);
     else if ('questions' in result) printCards(`Bài quiz đã nộp${result.grade ? ` · Điểm ${result.grade}` : ''}`,
       [...result.questions.map(question => ({
         title: `Câu ${question.questionnumber || question.slot}`,
