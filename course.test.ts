@@ -60,10 +60,12 @@ test('CLI help includes auth status and every command group without reading auth
   }
 });
 test('CLI auth status verifies the saved token without returning credentials', async t => {
-  const result = await cli(t, ['auth', 'status'], { core_webservice_get_site_info: user }, true);
-  assert.equal(result.code, 0); assert.equal(result.stderr, '');
-  assert.deepEqual(JSON.parse(result.stdout), { authenticated: true, userid: 7, fullname: 'Fixture Student' });
-  assert.ok(!result.stdout.includes(token));
+  for (const args of [['auth', 'status'], ['auth', 'status', '--json']]) {
+    const result = await cli(t, args, { core_webservice_get_site_info: user }, true);
+    assert.equal(result.code, 0); assert.equal(result.stderr, '');
+    assert.deepEqual(JSON.parse(result.stdout), { authenticated: true, userid: 7, fullname: 'Fixture Student' });
+    assert.ok(!result.stdout.includes(token));
+  }
 });
 
 test('human assignment lists use readable cards and local dates instead of Unix timestamps', async t => {

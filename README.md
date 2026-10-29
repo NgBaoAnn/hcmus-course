@@ -98,7 +98,11 @@ rỗng. `notices` đọc forum announcements/news, không đọc hết các foru
 Các lệnh đọc trên hỗ trợ `--json`: stdout chỉ chứa kết quả JSON, timestamp và
 `warnings` có cấu trúc; stderr chứa cảnh báo/lỗi. Kết quả có warning có thể chưa
 đầy đủ dù lệnh thành công; kiểm tra `warnings` trước khi xử lý tự động. Lỗi kết
-thúc với mã khác 0. `doctor`, `auth status` và `probe` luôn in JSON.
+thúc với mã khác 0. Trong terminal tương tác, output dùng thẻ, tự xuống dòng theo
+độ rộng và có màu nếu không đặt `NO_COLOR`; các lệnh tải lâu hiển thị tiến trình.
+Cảnh báo trùng nhau được gộp khi in nhưng vẫn đầy đủ trong JSON.
+`doctor`, `auth status` và `probe` cũng hiển thị thẻ trong terminal; dùng `--json`
+hoặc pipe stdout để nhận JSON như trước.
 `probe` được giữ để chẩn đoán tương thích: môn, Assignment, đề mẫu và quyền API;
 có tên API trong token chưa chứng minh được quyền ghi một bài cụ thể.
 

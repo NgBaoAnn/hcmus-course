@@ -8,7 +8,7 @@ import { openDefaultBrowser, registerProtocolHandler, unregisterProtocolHandler 
 import { api, decodeAppToken, publicConfig, SITE, type SiteInfo } from './moodle.js';
 import { listAssignments, viewAssignment, assignmentStatus, downloadAssignment, submitAssignment } from './assignments.js';
 import { listQuizzes, viewQuiz, quizAttempts, quizStatus, startQuiz, resumeQuiz, submitQuiz, reviewQuiz } from './quizzes.js';
-import { formatCards, formatLocalDate, formatStatus, render, requireId, show } from './terminal.js';
+import { formatCards, formatLocalDate, formatStatus, render, requireId, show, withProgress } from './terminal.js';
 import { listCourses, viewCourse, deadlines, grades, notices, type Course, type AssignmentsResponse } from './student.js';
 
 const configDir = join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'course-cli-spike');
@@ -17,9 +17,25 @@ const pendingLoginFile = join(configDir, 'pending-login.json');
 const print = (value: unknown) => show(value, { json: true });
 const printCards = (title: string, cards: { title: string; lines: string[] }[]) => console.log(formatCards(title, cards));
 const field = (label: string, value: string | number | null | undefined) => `${label}: ${value ?? 'Không rõ'}`;
+const reportWarnings = (warnings: { message?: string; warningcode?: string }[] = []) => {
+  const counts = new Map<string, number>();
+  for (const warning of warnings) {
+    const message = render(warning.message || warning.warningcode);
+    counts.set(message, (counts.get(message) ?? 0) + 1);
+  }
+  for (const [message, count] of counts) {
+    const label = `Cảnh báo${count > 1 ? ` (${count})` : ''}:`;
+    const prefix = process.stderr.isTTY && process.env.NO_COLOR === undefined ? `\x1b[1;33m⚠ ${label}\x1b[0m` : label;
+    console.error(`${prefix} ${message}`);
+  }
+};
+const diagnosticJson = (args: string[]) => {
+  const { values } = parseArgs({ args, options: { json: { type: 'boolean' } } });
+  return values.json === true || !process.stdout.isTTY;
+};
 const launchPath = '/admin/tool/mobile/launch.php';
 interface PendingLogin { loginId: string; passport: string; expiresAt: number }
-type LoginResult = { authenticated: true; userid: number; fullname?: string } | { authenticated: false; message: string };
+type LoginResult = { authenticated: true; userid: number; mssv?: string; fullname?: string } | { authenticated: false; message: string };
 
 async function saveToken(token: string, directory = configDir) {
   const tokenFile = join(directory, 'auth.json');
@@ -48,7 +64,7 @@ async function authCallback(href: string, directory = configDir) {
     const info = await api<SiteInfo>(token, 'core_webservice_get_site_info');
     if (!Number.isSafeInteger(info.userid) || info.userid <= 0) throw new Error('API không trả thông tin sinh viên hợp lệ.');
     await saveToken(token, directory);
-    const result: LoginResult = { authenticated: true, userid: info.userid, fullname: info.fullname };
+    const result: LoginResult = { authenticated: true, userid: info.userid, mssv: info.username, fullname: info.fullname };
     await writeFile(join(directory, `login-${pending.loginId}.json`), JSON.stringify(result), { mode: 0o600, flag: 'wx' });
   } catch (error) {
     await writeFile(join(directory, `login-${pending.loginId}.json`), JSON.stringify({
@@ -152,7 +168,7 @@ async function probe() {
   const assignments = result.courses.flatMap((course) =>
     (course.assignments ?? []).map((assignment) => ({ ...assignment, courseid: course.id })));
   const sample = assignments.find((assignment) => assignment.intro || assignment.introattachments?.length) ?? assignments[0];
-  print({
+  return {
     user: { id: info.userid, fullname: info.fullname },
     capabilities,
     courses: courses.map(({ id, shortname, fullname }) => ({ id, shortname, fullname })),
@@ -163,7 +179,7 @@ async function probe() {
       webUrl: `${SITE}/mod/assign/view.php?id=${sample.cmid}`,
     } : null,
     warnings: result.warnings ?? [],
-  });
+  };
 }
 
 async function main() {
@@ -182,14 +198,15 @@ async function main() {
     const id = action === 'list' ? undefined : requireId(positionals[0], ['view', 'attempts', 'start'].includes(action) ? 'Quiz ID' : 'Attempt ID');
     const courseId = values.course === undefined ? undefined : requireId(String(values.course), 'Course ID');
     const token = await readToken();
-    const result = action === 'list' ? await listQuizzes(token, courseId)
+    const load = async () => action === 'list' ? await listQuizzes(token, courseId)
       : action === 'view' ? await viewQuiz(token, id)
       : action === 'attempts' ? await quizAttempts(token, id)
       : action === 'status' ? await quizStatus(token, id)
       : action === 'start' ? await startQuiz(token, id)
       : action === 'resume' ? await resumeQuiz(token, id)
       : action === 'submit' ? await submitQuiz(token, id) : await reviewQuiz(token, id);
-    for (const warning of result.warnings ?? []) console.error(`Cảnh báo: ${render(warning.message || warning.warningcode)}`);
+    const result = readOnly && !values.json ? await withProgress('Đang đọc quiz từ Moodle…', load) : await load();
+    reportWarnings(result.warnings);
     if (values.json) show(result, { json: true });
     else if ('quizzes' in result) printCards(`Quiz · ${result.quizzes.length}`, result.quizzes.map(q => ({
       title: `#${q.id} · ${q.name}`,
@@ -245,12 +262,13 @@ async function main() {
     const id = action === 'list' ? undefined : requireId(positionals[0], 'Assignment ID');
     const courseId = values.course === undefined ? undefined : requireId(String(values.course), 'Course ID');
     const token = await readToken();
-    const result = action === 'list' ? await listAssignments(token, courseId)
+    const load = async () => action === 'list' ? await listAssignments(token, courseId)
       : action === 'view' ? await viewAssignment(token, id)
       : action === 'status' ? await assignmentStatus(token, id)
       : action === 'download' ? await downloadAssignment(token, id, typeof values.output === 'string' ? values.output : undefined)
       : await submitAssignment(token, id, { files: positionals.slice(1), textFile: typeof values['text-file'] === 'string' ? values['text-file'] : undefined, draft: values.draft === true });
-    for (const warning of result.warnings ?? []) console.error(`Cảnh báo: ${render(warning.message || warning.warningcode)}`);
+    const result = action === 'submit' || values.json ? await load() : await withProgress('Đang đọc bài tập từ Moodle…', load);
+    reportWarnings(result.warnings);
     if (values.json) show(result, { json: true });
     else if ('assignments' in result) printCards(`Bài tập · ${result.assignments.length}`, result.assignments.map(a => ({
       title: `#${a.id} · ${a.name}`,
@@ -297,18 +315,19 @@ async function main() {
       : values.course !== undefined || ['grades', 'notices'].includes(action) ? requireId(typeof values.course === 'string' ? values.course : undefined, 'Course ID') : undefined;
     const days = values.days === undefined ? 14 : requireId(typeof values.days === 'string' ? values.days : undefined, 'Số ngày');
     const token = await readToken();
-    const result = action === 'list' ? await listCourses(token)
+    const load = async () => action === 'list' ? await listCourses(token)
       : action === 'view' ? await viewCourse(token, id)
       : action === 'deadlines' ? await deadlines(token, { courseId: id, days, overdue: values.overdue === true })
       : action === 'grades' ? await grades(token, id) : await notices(token, id);
-    for (const warning of result.warnings ?? []) console.error(`Cảnh báo: ${render(warning.message || warning.warningcode)}`);
+    const result = values.json ? await load() : await withProgress(action === 'deadlines' ? 'Đang kiểm tra hạn từ Moodle…' : 'Đang đọc dữ liệu Moodle…', load);
+    reportWarnings(result.warnings);
     if (values.json) show(result, { json: true });
     else if ('courses' in result) printCards(`Môn học · ${result.courses.length}`, result.courses.map(course => ({ title: `#${course.id} · ${course.fullname}`, lines: [course.webUrl] })));
     else if ('sections' in result) printCards(`Nội dung môn học · ${result.sections.length}`, result.sections.map(section => ({
       title: section.name,
       lines: [section.summaryText, ...section.modules.flatMap(module => [`${module.modname}: ${module.name}`, module.descriptionText, module.url ?? '']).filter(Boolean)],
     })).concat([{ title: 'Mở trên Moodle', lines: [result.webUrl] }]));
-    else if ('deadlines' in result) printCards(`Hạn nộp / đóng quiz · ${result.deadlines.length}`, result.deadlines.map(deadline => ({
+    else if ('deadlines' in result) printCards(`Hạn nộp / đóng quiz · ${days} ngày tới${values.overdue ? ' + quá hạn' : ''} · ${result.deadlines.length}`, result.deadlines.map(deadline => ({
       title: `${deadline.type === 'assignment' ? 'Bài tập' : 'Quiz'} #${deadline.id} · ${deadline.name}${deadline.overdue ? ' · Quá hạn' : ''}`,
       lines: [field('Môn ID', deadline.courseid), `Hạn: ${formatLocalDate(deadline.due)}`,
         `Trạng thái: ${formatStatus(deadline.state)}`,
@@ -324,31 +343,69 @@ async function main() {
     else if ('notices' in result) printCards(`Thông báo · ${result.notices.length}`, result.notices.map(notice => ({
       title: notice.subject, lines: [field('Diễn đàn', notice.forumname), `Đăng lúc: ${formatLocalDate(notice.created)}`, notice.messageText, notice.webUrl],
     })));
-  } else if (command === 'doctor') {
-    const config = await publicConfig();
-    print({ site: SITE, name: config.sitename, webservices: config.enablewebservices,
+  } else if (args[0] === 'doctor') {
+    const json = diagnosticJson(args.slice(1));
+    const config = json ? await publicConfig() : await withProgress('Đang kiểm tra kết nối Moodle…', publicConfig);
+    const result = { site: SITE, name: config.sitename, webservices: config.enablewebservices,
       mobileWebservices: config.enablemobilewebservice,
-      microsoft: config.identityproviders?.some((provider) => provider.name === 'Microsoft') });
+      microsoft: config.identityproviders?.some((provider) => provider.name === 'Microsoft') };
+    if (json) print(result);
+    else printCards('Kết nối Moodle', [{ title: result.name || 'Website môn học', lines: [result.site,
+      `Web service: ${result.webservices ? 'Sẵn sàng' : 'Chưa bật'}`,
+      `Mobile API: ${result.mobileWebservices ? 'Sẵn sàng' : 'Chưa bật'}`,
+      `Microsoft: ${result.microsoft ? 'Có' : 'Không'}`] }]);
   } else if (command === 'auth login') {
     await login();
   } else if (args[0] === 'auth' && args[1] === 'callback') {
     if (args.length === 3) await authCallback(args[2]);
     else if (args.length === 5 && args[2] === '--config-dir') await authCallback(args[4], resolve(args[3]));
     else throw new Error('Callback đăng nhập không hợp lệ.');
-  } else if (command === 'auth status') {
-    const info = await api<SiteInfo>(await readToken(), 'core_webservice_get_site_info');
+  } else if (args[0] === 'auth' && args[1] === 'status') {
+    const json = diagnosticJson(args.slice(2));
+    const token = await readToken();
+    const info = json ? await api<SiteInfo>(token, 'core_webservice_get_site_info')
+      : await withProgress('Đang kiểm tra tài khoản…', () => api<SiteInfo>(token, 'core_webservice_get_site_info'));
     requireId(String(info.userid), 'User ID');
-    print({ authenticated: true, userid: info.userid, fullname: info.fullname });
+    const result = { authenticated: true, userid: info.userid, mssv: info.username, fullname: info.fullname };
+    if (json) print(result);
+    else printCards('Tài khoản', [{ title: info.fullname || `Moodle #${info.userid}`,
+      lines: [`Trạng thái: Đã đăng nhập`, field('MSSV', info.username), field('Moodle User ID', info.userid)] }]);
   } else if (command === 'auth logout') {
     await rm(authFile, { force: true });
     try { await unregisterProtocolHandler(); }
     catch { console.error('Cảnh báo: không gỡ được protocol handler coursecli://.'); }
     console.log('Đã xóa token trên máy. Token phía Moodle chưa bị thu hồi.');
-  } else if (command === 'probe') {
-    await probe();
+  } else if (args[0] === 'probe') {
+    const json = diagnosticJson(args.slice(1));
+    const result = json ? await probe() : await withProgress('Đang kiểm tra quyền API…', probe);
+    if (json) print(result);
+    else {
+      reportWarnings(result.warnings);
+      printCards('Chẩn đoán Moodle', [
+        { title: 'Tài khoản', lines: [result.user.fullname || `Moodle #${result.user.id}`, field('Moodle User ID', result.user.id)] },
+        { title: 'Dữ liệu đọc được', lines: [`Môn học: ${result.courses.length}`, `Bài tập: ${result.assignments.length}`,
+          `Cảnh báo: ${result.warnings.length}`] },
+        { title: 'Quyền API', lines: Object.entries(result.capabilities).map(([name, enabled]) => `${enabled ? '✓' : '✕'} ${name}`) },
+        ...(result.sampleAssignment ? [{ title: 'Bài tập mẫu', lines: [`#${result.sampleAssignment.id} · ${result.sampleAssignment.name}`,
+          `Tệp đề: ${result.sampleAssignment.attachments?.length ?? 0}`, result.sampleAssignment.webUrl] }] : []),
+      ]);
+    }
   } else {
     if (command && command !== '--help') throw new Error(`Lệnh không hợp lệ: ${command}`);
-    console.log('Course CLI:\n  course doctor\n  course auth login\n  course auth status\n  course probe\n  course auth logout\n  course list [--json]\n  course view <course-id> [--json]\n  course deadlines [--course <course-id>] [--days <positive-integer>] [--overdue] [--json]\n  course grades --course <course-id> [--json]\n  course notices --course <course-id> [--json]\n  course assignment list [--course <course-id>] [--json]\n  course assignment view|status <assignment-id> [--json]\n  course assignment download <assignment-id> [--output <directory>] [--json]\n  course assignment submit <assignment-id> [files...] [--text-file <path>] [--draft]\n  course quiz list [--course <course-id>] [--json]\n  course quiz view|attempts <quiz-id> [--json]\n  course quiz status|review <attempt-id> [--json]\n  course quiz start <quiz-id>\n  course quiz resume|submit <attempt-id>');
+    printCards('Lệnh và tùy chọn', [
+      { title: 'Tài khoản & chẩn đoán', lines: ['course doctor [--json]', 'course auth login',
+        'course auth status [--json]', 'course auth logout', 'course probe [--json]'] },
+      { title: 'Môn học', lines: ['course list [--json]', 'course view &lt;course-id&gt; [--json]',
+        'course deadlines [--course &lt;course-id&gt;] [--days &lt;số-ngày&gt;] [--overdue] [--json]',
+        'course grades --course &lt;course-id&gt; [--json]', 'course notices --course &lt;course-id&gt; [--json]'] },
+      { title: 'Bài tập', lines: ['course assignment list [--course &lt;course-id&gt;] [--json]',
+        'course assignment view|status &lt;assignment-id&gt; [--json]',
+        'course assignment download &lt;assignment-id&gt; [--output &lt;thư-mục&gt;] [--json]',
+        'course assignment submit &lt;assignment-id&gt; [files...] [--text-file &lt;path&gt;] [--draft]'] },
+      { title: 'Quiz', lines: ['course quiz list [--course &lt;course-id&gt;] [--json]',
+        'course quiz view|attempts &lt;quiz-id&gt; [--json]', 'course quiz status|review &lt;attempt-id&gt; [--json]',
+        'course quiz start &lt;quiz-id&gt;', 'course quiz resume|submit &lt;attempt-id&gt;'] },
+    ]);
   }
 }
 

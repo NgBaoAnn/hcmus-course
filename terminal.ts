@@ -45,9 +45,68 @@ const statuses: Record<string, string> = {
 export function formatCards(title: string, cards: { title: string; lines: string[] }[]): string {
   const color = process.stdout.isTTY && process.env.NO_COLOR === undefined;
   const style = (value: string, code: string) => color ? `\x1b[${code}m${value}\x1b[0m` : value;
-  const heading = style(render(title), '1;36');
-  const body = cards.map(card => [style(render(card.title), '1'), ...card.lines.map(line => `  ${render(line)}`)].join('\n')).join('\n\n');
-  return `${heading}\n\n${body || 'Không có mục nào.'}`;
+  const width = Math.max(16, Math.min(process.stdout.columns || 80, 100));
+  const wrap = (value: string, limit: number) => value.split('\n').flatMap(line => {
+    const words = line.trim().split(/\s+/u);
+    if (!line.trim()) return [''];
+    const rows: string[] = [];
+    let row = '';
+    for (const word of words) {
+      if (row && Array.from(`${row} ${word}`).length > limit) { rows.push(row); row = ''; }
+      if (/^https?:\/\//.test(word)) { if (row) rows.push(row); row = ''; rows.push(word); continue; }
+      const chars = Array.from(word);
+      while (chars.length > limit) rows.push(chars.splice(0, limit).join(''));
+      row = row ? `${row} ${chars.join('')}` : chars.join('');
+    }
+    if (row) rows.push(row);
+    return rows;
+  });
+  const rail = style('│', '2;36');
+  const decorate = (value: string) => {
+    if (/^https?:\/\//.test(value)) return style(value, '4;36');
+    const match = /^([^:]{2,24}:)(.*)$/.exec(value);
+    if (!match) return value;
+    const tone = /^Trạng thái:/.test(match[1])
+      ? /Quá hạn|Chưa đúng|Hết hạn|Không rõ/.test(match[2]) ? '1;31' : /Đã nộp|Đã hoàn thành|Đúng/.test(match[2]) ? '1;32' : '1;33'
+      : undefined;
+    return `${style(match[1], '2')}${tone ? style(match[2], tone) : match[2]}`;
+  };
+  const heading = [style('╔══ COURSE CLI', '1;36'),
+    ...wrap(render(title), width - 3).map(line => `${style('║', '36')}  ${style(line, '1')}`),
+    style(`╚${'═'.repeat(width - 1)}`, '36')].join('\n');
+  const body = cards.length ? cards.map((card, index) => {
+    const marker = cards.length > 1 ? `${String(index + 1).padStart(2, '0')}  ` : '';
+    const safeTitle = render(card.title);
+    const titleTone = /Quá hạn|Hết hạn|Chưa đúng/.test(safeTitle) ? '1;31'
+      : /Đã nộp|Đã hoàn thành/.test(safeTitle) ? '1;32' : '1';
+    const titleRows = wrap(safeTitle, width - marker.length - 4);
+    const rows = [`${style('╭─', '36')} ${style(marker + (titleRows.shift() ?? ''), titleTone)}`,
+      ...titleRows.map(line => `${rail}  ${style(line, titleTone)}`)];
+    for (const line of card.lines) {
+      const safe = render(line);
+      if (safe) rows.push(...wrap(safe, width - 4).map(part => `${rail}  ${decorate(part)}`));
+    }
+    rows.push(style(`╰${'─'.repeat(width - 1)}`, '2;36'));
+    return rows.join('\n');
+  }).join('\n\n') : `${style('╭─', '36')} Không có mục nào.\n${style(`╰${'─'.repeat(width - 1)}`, '2;36')}`;
+  return `${heading}\n\n${body}`;
+}
+
+export async function withProgress<T>(label: string, work: () => Promise<T>): Promise<T> {
+  if (!process.stderr.isTTY) return work();
+  const frames = ['◐', '◓', '◑', '◒'];
+  const message = render(label);
+  let index = 0;
+  let shown = false;
+  let interval: ReturnType<typeof setInterval> | undefined;
+  const paint = () => { shown = true; process.stderr.write(`\r\x1b[2K${frames[index++ % frames.length]} ${message}`); };
+  const delay = setTimeout(() => { paint(); interval = setInterval(paint, 120); }, 300);
+  try { return await work(); }
+  finally {
+    clearTimeout(delay);
+    if (interval) clearInterval(interval);
+    if (shown) process.stderr.write('\r\x1b[2K');
+  }
 }
 
 export function formatLocalDate(timestamp: number | null | undefined): string {

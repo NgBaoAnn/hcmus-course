@@ -4,6 +4,7 @@ export const SITE = 'https://courses.fit.hcmus.edu.vn';
 
 export interface SiteInfo {
   userid: number;
+  username?: string;
   fullname?: string;
   functions?: { name: string }[];
 }

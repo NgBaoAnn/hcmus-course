@@ -22,9 +22,11 @@ test('missing Moodle descriptions render as empty text', () => {
 });
 
 test('card output stays readable without a TTY and sanitizes untrusted text', () => {
-  assert.equal(formatCards('Bài tập\x1b[31m', [{ title: 'Bài cuối kỳ', lines: ['Hạn: 29/10/2026 07:00', 'URL: https://example.org'] }]),
-    'Bài tập\n\nBài cuối kỳ\n  Hạn: 29/10/2026 07:00\n  URL: https://example.org');
-  assert.equal(formatCards('Môn học', []), 'Môn học\n\nKhông có mục nào.');
+  const output = formatCards('Bài tập\x1b[31m', [{ title: 'Bài cuối kỳ', lines: ['Hạn: 29/10/2026 07:00', 'https://example.org'] }]);
+  assert.match(output, /╔══ COURSE CLI\n║  Bài tập/);
+  assert.match(output, /╭─ Bài cuối kỳ\n│  Hạn: 29\/10\/2026 07:00\n│  https:\/\/example.org/);
+  assert.doesNotMatch(output, /\x1b/);
+  assert.match(formatCards('Môn học', []), /Không có mục nào\./);
 });
 
 test('card headings use color only on a TTY when NO_COLOR is unset', () => {
@@ -35,12 +37,26 @@ test('card headings use color only on a TTY when NO_COLOR is unset', () => {
     process.env.NO_COLOR = '';
     assert.doesNotMatch(formatCards('Môn học', []), /\x1b\[/);
     delete process.env.NO_COLOR;
-    assert.match(formatCards('Môn học', []), /\x1b\[1;36mMôn học\x1b\[0m/);
+    assert.match(formatCards('Môn học', []), /\x1b\[1;36m╔══ COURSE CLI\x1b\[0m/);
   } finally {
     if (previousTTY) Object.defineProperty(process.stdout, 'isTTY', previousTTY);
     else delete (process.stdout as unknown as { isTTY?: boolean }).isTTY;
     if (previousNoColor === undefined) delete process.env.NO_COLOR;
     else process.env.NO_COLOR = previousNoColor;
+  }
+});
+
+test('long Vietnamese card content wraps within a narrow terminal', () => {
+  const previousColumns = Object.getOwnPropertyDescriptor(process.stdout, 'columns');
+  try {
+    Object.defineProperty(process.stdout, 'columns', { configurable: true, value: 36 });
+    const output = formatCards('Bài tập', [{ title: 'Phát triển ứng dụng web nâng cao cho sinh viên',
+      lines: ['Mô tả: Nội dung bài tập rất dài và cần xuống dòng cho dễ đọc.'] }]);
+    assert.match(output, /Phát triển ứng dụng web/);
+    assert.ok(output.split('\n').every(line => Array.from(line).length <= 36), output);
+  } finally {
+    if (previousColumns) Object.defineProperty(process.stdout, 'columns', previousColumns);
+    else delete (process.stdout as unknown as { columns?: number }).columns;
   }
 });
 
