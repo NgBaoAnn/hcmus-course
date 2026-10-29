@@ -1,23 +1,35 @@
 # Course
 
-Monorepo npm workspaces gồm hai package:
+Repo gồm CLI TypeScript tại `packages/cli` và plugin Codex tại `plugins/hcmus-course`.
+Plugin chỉ chứa skills hướng dẫn agent dùng lệnh `course`; CLI được cài riêng.
 
-- `packages/cli`: CLI TypeScript hiện có, lệnh `course`.
-- `packages/mcp`: chỗ dành cho MCP server sẽ phát triển sau; chưa có server chạy.
+## Plugin Codex cho agent
 
-## Skill cho agent
-
-Repo có ba skill tại `skills/` để agent biết cách dùng CLI: `using-course-cli`
+Plugin có bốn skill tại `plugins/hcmus-course/skills/`: `setup` để cài và đăng nhập,
+`using-course-cli`
 cho lệnh đọc và xác thực, `submitting-course-assignments` cho nộp Assignment,
 và `taking-course-quizzes` cho làm Quiz. Chúng là tài liệu hướng dẫn agent,
 không thay đổi hành vi của lệnh `course`.
 
-Codex và các agent hỗ trợ chuẩn Agent Skills có thể nạp chúng từ
-`~/.agents/skills/`. Từ thư mục gốc repo, cài bằng:
+Trong Codex desktop, thêm repo này làm marketplace cục bộ rồi cài plugin
+**HCMUS Course**. Từ thư mục gốc repo, chạy `codex plugin marketplace add .`,
+khởi động lại app, mở Plugins Directory, chọn marketplace **HCMUS Course** rồi cài.
+Repo khai báo plugin trong `plugins/hcmus-course/plugin.json` và marketplace trong
+`.agents/plugins/marketplace.json`; plugin cần executor cục bộ để chạy `course`.
+Sau khi cài plugin, cài CLI theo mục tiếp theo rồi chạy `course doctor` và
+`course auth login`. CLI hiện chưa phát hành lên npm.
+
+Trong chat Codex có thể hỏi trực tiếp: “Còn deadline nào tôi chưa làm?”,
+“Đọc đề bài tập đó và giúp tôi làm”, hoặc “Nộp bài này giúp tôi”. Agent dùng CLI
+để tra dữ liệu; với thao tác ghi, agent chuẩn bị nội dung, trình bày bản xem trước
+và chờ bạn duyệt trong chat trước khi xác nhận lệnh.
+
+Nếu chỉ muốn nạp skills thủ công cho Codex hoặc agent hỗ trợ Agent Skills, có thể
+chép chúng vào `~/.agents/skills/`. Từ thư mục gốc repo, chạy:
 
 ```sh
 mkdir -p ~/.agents/skills
-cp -R skills/using-course-cli skills/submitting-course-assignments skills/taking-course-quizzes ~/.agents/skills/
+cp -R plugins/hcmus-course/skills/* ~/.agents/skills/
 ```
 
 Mở phiên agent mới sau khi cài để danh sách skill được cập nhật. Khi nâng cấp

@@ -4,7 +4,7 @@
 
 **Goal:** Ship a local Codex skills plugin that guides setup and natural-language Moodle workflows through the separately installed `course` CLI.
 
-**Architecture:** The repository root holds the portable plugin manifest and skills. The CLI remains a TypeScript npm workspace package and emits JSON for read commands when stdout is not a TTY. Moodle writes continue through an interactive PTY and a concrete chat approval.
+**Architecture:** `plugins/hcmus-course` holds the portable plugin manifest and skills. The CLI remains a TypeScript npm workspace package and emits JSON for read commands when stdout is not a TTY. Moodle writes continue through an interactive PTY and a concrete chat approval.
 
 **Tech Stack:** Node.js >=22, TypeScript, npm workspaces, Agent Plugins manifest, Markdown Agent Skills.
 
@@ -41,9 +41,9 @@
 
 ### Task 2: Package the skills-only Codex plugin
 
-**Files:** Create `plugin.json`, `.agents/plugins/marketplace.json`; remove `packages/mcp/*`; modify `package.json`, `package-lock.json`, `README.md`.
+**Files:** Create `plugins/hcmus-course/plugin.json`, `.agents/plugins/marketplace.json`; move skills under `plugins/hcmus-course/skills/`; remove `packages/mcp/*`; modify `package.json`, `package-lock.json`, `README.md`.
 
-**Interfaces:** Root portable manifest identifies the skills plugin and sets `extensions.com.openai.requires_local_executor` to `true`. Repo marketplace entry points at the root plugin. CLI npm package remains private and unpublished until a later release.
+**Interfaces:** Portable manifest identifies the skills plugin and sets `extensions.com.openai.requires_local_executor` to `true`. Repo marketplace entry points at the plugin folder. CLI npm package remains private and unpublished until a later release.
 
 - [ ] Write a small local validation test for manifest shape, skill paths, absence of MCP configuration, and marketplace source path.
 - [ ] Run it against the current repo and confirm it fails because the manifest is missing.
@@ -52,7 +52,7 @@
 
 ### Task 3: Teach natural-language workflows
 
-**Files:** Modify `skills/using-course-cli/SKILL.md`, `skills/submitting-course-assignments/SKILL.md`, `skills/taking-course-quizzes/SKILL.md` only where baseline scenarios show a gap; possibly add `skills/setting-up-course-cli/SKILL.md` if setup needs an independent trigger. Update installed personal copies after verification.
+**Files:** Modify skills under `plugins/hcmus-course/skills/` where baseline scenarios show a gap; add `setup/SKILL.md` for onboarding. Update installed personal copies after verification.
 
 **Interfaces:** Skills run `course` by name after checking it exists. Until npm publication, setup points to the current repository install path. For writes, the agent builds and validates the artifact, starts CLI in a PTY, relays its preview into chat, waits for explicit approval, then sends `yes` to the same process and verifies Moodle status.
 

@@ -12,14 +12,14 @@ Students install a local Codex skills plugin and ask for Moodle work in natural 
 
 ## Package
 
-The repository root is a portable Agent Plugins package with `plugin.json` and `skills/`. The manifest declares `extensions.com.openai.requires_local_executor: true`. A repo marketplace entry makes it discoverable in local Codex. No MCP server or configuration is packaged. The plugin contains instructions, not a copy of the CLI or credentials.
+`plugins/hcmus-course` is a portable Agent Plugins package with `plugin.json` and `skills/`. The manifest declares `extensions.com.openai.requires_local_executor: true` and an onboarding skill. A repo marketplace entry makes it discoverable in local Codex. No MCP server or configuration is packaged. The plugin contains instructions, not a copy of the CLI or credentials.
 
 The CLI remains a TypeScript npm package in `packages/cli`, with Node.js >=22 required. It will be published separately later. Until the npm release, the setup skill can guide a local development install from this repository; it must not claim a package already exists on npm. The release/install instructions describe both paths and Microsoft login through the default browser.
 
 ## Agent workflow
 
 1. Check that `course` is installed and is the expected HCMUS CLI. If absent, guide installation without inventing an unpublished npm package. Run `auth status`; if needed, launch `auth login` and let the student complete Microsoft SSO/MFA in their browser.
-2. For a deadline prompt, call `deadlines --days 30 --overdue --json` and `list --all --json` to map course names. Check per-assignment status before saying an item is submitted or outstanding. Carry Moodle warnings and unknown states into the answer.
+2. For a deadline prompt, call `deadlines --days 30 --overdue` and `list --all` to map course names. Check ambiguous per-assignment states before saying an item is submitted or outstanding. Carry Moodle warnings and unknown states into the answer.
 3. For “do that assignment,” resolve the referenced Assignment ID, read `assignment view` and `status` as JSON, download attachments when relevant, produce the requested artifact in a local working directory, and validate it as appropriate to the task.
 4. Start `assignment submit` with explicit ID and files in a PTY. Relay the CLI's current preview to chat; wait for the student's approval of that exact submission. The agent then sends `yes` to the waiting PTY and checks `assignment status` afterward. On timeout or uncertain state, inspect before any retry.
 5. Quiz answers are approved before entry because they save immediately. Final quiz submission has separate summary-reading and finalization confirmations.

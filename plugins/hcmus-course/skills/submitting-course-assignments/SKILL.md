@@ -1,6 +1,6 @@
 ---
 name: submitting-course-assignments
-description: Use when an agent needs to prepare, upload, save, verify, or troubleshoot a Moodle Assignment submission through the HCMUS FIT Course CLI.
+description: Use when a student asks an agent to read, solve, prepare, upload, submit, verify, or troubleshoot a Moodle Assignment through the HCMUS FIT Course CLI.
 ---
 
 # Submitting Course Assignments
@@ -8,6 +8,8 @@ description: Use when an agent needs to prepare, upload, save, verify, or troubl
 ## Overview
 
 `course assignment submit` writes to a student's Moodle Assignment. A file argument is the **complete replacement file set**, and an upload or saved draft is not proof of final submission.
+
+If `course` is unavailable or unauthenticated, follow the plugin's [setup skill](../setup/SKILL.md). For “làm bài tập đó và nộp bài”, resolve “đó” from the conversation or ask only if several assignments remain plausible. Read the full prompt and attachments, produce the requested answer as local files or UTF-8 text, and check the artifact against the assignment requirements before starting a submission. Show the student the finished artifact and any limits you could not verify.
 
 ## Quick reference
 
@@ -35,7 +37,7 @@ The CLI preview must list the intended final file set. `assignment download` fet
 
 ## Confirmation and result
 
-This write requires an interactive terminal and explicit `yes`; there is no agent bypass flag. Show the preview to the student before confirming, especially any group effect or submission statement. Afterward, classify the result from the CLI and `assignment status`: `submitted` means Moodle confirms final submission, `saved` means it is not final, and `uncertain` means verification failed. A group may still need other members to confirm. On timeout or uncertainty, inspect status and the website; do not automatically retry a write or claim success.
+This write requires an interactive terminal and explicit `yes`; there is no agent bypass flag. Start the command in a local PTY, capture its exact preview, and relay the target assignment, complete file set, draft/final state, and any group effect to the student in chat. Wait for explicit approval of that concrete preview. The agent then sends `yes` to the **same PTY session**; the student need not type into the terminal. If the student declines, send `no` or cancel. Afterward, classify the result from the CLI and `assignment status`: `submitted` means Moodle confirms final submission, `saved` means it is not final, and `uncertain` means verification failed. A group may still need other members to confirm. On timeout or uncertainty, inspect status and the website; do not automatically retry a write or claim success.
 
 ## Common mistakes
 

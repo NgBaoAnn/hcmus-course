@@ -9,6 +9,8 @@ description: Use when an agent needs to inspect, start, resume, answer, submit, 
 
 Quiz reads and active-attempt operations have different effects in Moodle. Keep a read-only request on read-only commands; starting, resuming, and submitting can affect a live attempt or its timer.
 
+If `course` is unavailable or unauthenticated, follow the plugin's [setup skill](../setup/SKILL.md).
+
 ## Quick reference
 
 | Need | Command | ID |
