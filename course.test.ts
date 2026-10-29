@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { execFile } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -58,7 +58,44 @@ test('CLI help includes auth status and every command group without reading auth
     assert.equal(result.code, 0); assert.equal(result.stderr, '');
     for (const text of ['auth status', 'assignment submit', 'quiz resume', 'deadlines', 'grades', 'notices',
       'calendar', 'progress', 'notifications', 'forum discussions']) assert.ok(result.stdout.includes(text), text);
+    assert.doesNotMatch(result.stdout, /--json/);
   }
+});
+test('noninteractive list defaults to current year and --all includes older enrolled courses', async t => {
+  const local = new Date(Date.now() + 7 * 3600_000);
+  const year = local.getUTCFullYear() - (local.getUTCMonth() < 8 ? 1 : 0);
+  const responses = {
+    core_webservice_get_site_info: user,
+    core_enrol_get_users_courses: [{ id: 12, fullname: 'Current', category: 195 }, { id: 13, fullname: 'Older', category: 189 }],
+    core_course_get_categories: [
+      { id: 192, name: `${year}-${year + 1}`, path: '/192' }, { id: 195, name: 'Chính Quy', path: '/192/193/195' },
+      { id: 173, name: `${year - 1}-${year}`, path: '/173' }, { id: 189, name: 'Chính Quy', path: '/173/183/189' },
+    ],
+  };
+  const current = await cli(t, ['list', '--json'], responses, true);
+  assert.equal(current.code, 0, current.stderr);
+  assert.deepEqual(JSON.parse(current.stdout).courses.map((course: { id: number }) => course.id), [12]);
+  const all = await cli(t, ['list', '--all', '--json'], responses, true);
+  assert.equal(all.code, 0, all.stderr);
+  assert.deepEqual(JSON.parse(all.stdout).courses.map((course: { id: number }) => course.id), [12, 13]);
+});
+test('interactive list lets the student choose all enrolled courses', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'course-cli-list-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(join(directory, 'course-cli-spike'));
+  await writeFile(join(directory, 'course-cli-spike', 'auth.json'), JSON.stringify({ token }));
+  const preload = `process.stdin.isTTY = true; process.stdout.isTTY = true;
+    globalThis.fetch = async (_url, { body }) => new Response(JSON.stringify(
+      body.get('wsfunction') === 'core_webservice_get_site_info' ? {userid: 7} :
+      body.get('wsfunction') === 'core_enrol_get_users_courses' ?
+        [{id: 12, fullname: 'Current'}, {id: 13, fullname: 'Older'}] : []));`;
+  const result = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
+    new URL('./course.js', import.meta.url).pathname, 'list'], {
+    env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' }, input: '2\n', encoding: 'utf8', timeout: 5000,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Chọn phạm vi môn học/);
+  assert.match(result.stdout, /Tất cả môn học · 2/);
 });
 test('new read commands route through Moodle and render readable cards', async t => {
   const responses = {

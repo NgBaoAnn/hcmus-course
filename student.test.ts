@@ -43,6 +43,29 @@ test('lists enrolled courses for the authenticated student, including empty enro
   assert.deepEqual((await listCourses(token)).courses, []);
 });
 
+test('current academic year follows Moodle category roots and all retains older courses', async t => {
+  t.mock.method(Date, 'now', () => Date.parse('2026-10-29T05:00:00Z'));
+  const calls = fixture(t, {
+    core_enrol_get_users_courses: [
+      { id: 12, fullname: 'Current', category: 195 },
+      { id: 13, fullname: 'Previous', category: 189 },
+      { id: 14, fullname: 'Homeroom', category: 204 },
+    ],
+    core_course_get_categories: [
+      { id: 192, name: '2026-2027', path: '/192' },
+      { id: 195, name: 'Chính Quy', path: '/192/193/195' },
+      { id: 173, name: '2025-2026', path: '/173' },
+      { id: 189, name: 'Chính Quy', path: '/173/183/189' },
+      { id: 204, name: 'Khóa 2023', path: '/196/197/204' },
+    ],
+  });
+  const current = await listCourses(token, true);
+  assert.deepEqual(current.courses.map(course => course.id), [12]);
+  assert.equal(current.academicYear, '2026-2027');
+  assert.equal((await listCourses(token)).courses.length, 3);
+  assert.equal(calls.filter(call => call.method === 'core_course_get_categories').length, 1);
+});
+
 test('course view retains sections, activities, resources and website links', async (t) => {
   fixture(t, { core_course_get_contents: [{ id: 1, name: 'Week 1', summary: '<p>Read this</p>',
     modules: [{ id: 9, name: 'Notes', modname: 'resource', url: 'https://courses.fit.hcmus.edu.vn/mod/resource/view.php?id=9', contents: [{ filename: 'notes.pdf' }] }] }] });
@@ -197,8 +220,12 @@ test('student CLI validates arguments and supports JSON and readable output', as
     await mkdir(join(directory, 'course-cli-spike'));
     await writeFile(join(directory, 'course-cli-spike', 'auth.json'), JSON.stringify({ token }));
     const preload = join(directory, 'fixture.js');
+    const local = new Date(Date.now() + 7 * 3600_000);
+    const year = local.getUTCFullYear() - (local.getUTCMonth() < 8 ? 1 : 0);
     await writeFile(preload, `globalThis.fetch = async (_url, {body}) => new Response(JSON.stringify(
-      body.get('wsfunction') === 'core_webservice_get_site_info' ? {userid: 7} : [{id: 12, fullname: 'Algorithms'}]));`);
+      body.get('wsfunction') === 'core_webservice_get_site_info' ? {userid: 7} :
+      body.get('wsfunction') === 'core_course_get_categories' ? [{id: 192, name: '${year}-${year + 1}', path: '/192'},
+        {id: 195, name: 'Chính Quy', path: '/192/193/195'}] : [{id: 12, fullname: 'Algorithms', category: 195}]));`);
     const run = (...args: string[]) => spawnSync(process.execPath, ['--import', preload, 'course.js', ...args], {
       cwd: import.meta.dirname, env: { ...process.env, XDG_CONFIG_HOME: directory }, encoding: 'utf8',
     });

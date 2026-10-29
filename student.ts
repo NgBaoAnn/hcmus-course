@@ -8,7 +8,8 @@ export interface MoodleWarning {
   message: string;
 }
 interface WithWarnings { warnings?: MoodleWarning[] }
-export interface Course { id: number; fullname: string; shortname?: string }
+export interface Course { id: number; fullname: string; shortname?: string; category?: number }
+interface CourseCategory { id: number; name: string; path: string }
 export interface Assignment {
   id: number; name: string; duedate?: number; cutoffdate?: number; cmid?: number;
   intro?: string; introattachments?: { filename: string; filesize: number }[];
@@ -74,11 +75,23 @@ async function user(token: string) {
   return info;
 }
 
-export async function listCourses(token: string) {
+export async function listCourses(token: string, currentYear = false) {
   const info = await user(token);
   const courses = await api<Course[]>(token, 'core_enrol_get_users_courses', { userid: info.userid });
   if (!Array.isArray(courses)) throw new Error('Danh sách môn học trả về không hợp lệ.');
-  return { courses: courses.map((course) => ({ ...course, webUrl: `${SITE}/course/view.php?id=${course.id}` })), warnings: [] as MoodleWarning[] };
+  const local = new Date(Date.now() + 7 * 3600_000);
+  const year = local.getUTCFullYear() - (local.getUTCMonth() < 8 ? 1 : 0);
+  const academicYear = `${year}-${year + 1}`;
+  if (!currentYear || !courses.length) return { courses: courses.map(course => ({ ...course,
+    webUrl: `${SITE}/course/view.php?id=${course.id}` })), academicYear: currentYear ? academicYear : null,
+    warnings: [] as MoodleWarning[] };
+  const categories = await api<CourseCategory[]>(token, 'core_course_get_categories');
+  if (!Array.isArray(categories)) throw new Error('Danh mục môn học trả về không hợp lệ.');
+  const root = categories.find(category => category.name === academicYear && category.path === `/${category.id}`);
+  const paths = new Map(categories.map(category => [category.id, category.path]));
+  return { courses: courses.filter(course => root && paths.get(course.category ?? 0)?.split('/').includes(String(root.id)))
+    .map(course => ({ ...course, webUrl: `${SITE}/course/view.php?id=${course.id}` })), academicYear,
+    warnings: root ? [] as MoodleWarning[] : [{ warningcode: 'missingcategory', message: `Không tìm thấy danh mục năm học ${academicYear} trên Moodle.` }] };
 }
 
 export async function viewCourse(token: string, id: InputId) {

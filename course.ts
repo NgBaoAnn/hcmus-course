@@ -8,7 +8,7 @@ import { openDefaultBrowser, registerProtocolHandler, unregisterProtocolHandler 
 import { api, decodeAppToken, publicConfig, SITE, type SiteInfo } from './moodle.js';
 import { listAssignments, viewAssignment, assignmentStatus, downloadAssignment, submitAssignment } from './assignments.js';
 import { listQuizzes, viewQuiz, quizAttempts, quizStatus, startQuiz, resumeQuiz, submitQuiz, reviewQuiz } from './quizzes.js';
-import { formatCards, formatLocalDate, formatStatus, render, requireId, show, withProgress } from './terminal.js';
+import { ask, formatCards, formatLocalDate, formatStatus, render, requireId, show, withProgress } from './terminal.js';
 import { listCourses, viewCourse, deadlines, grades, notices, type Course, type AssignmentsResponse } from './student.js';
 import { calendar, progress, notifications, forums, forumDiscussions, forumView } from './campus.js';
 
@@ -338,6 +338,7 @@ async function main() {
     const action = args[0];
     const options = {
       json: { type: 'boolean' as const },
+      ...(action === 'list' ? { all: { type: 'boolean' as const } } : {}),
       ...(['deadlines', 'grades', 'notices', 'calendar', 'progress'].includes(action) ? { course: { type: 'string' as const } } : {}),
       ...(['deadlines', 'calendar'].includes(action) ? { days: { type: 'string' as const } } : {}),
       ...(action === 'deadlines' ? { overdue: { type: 'boolean' as const } } : {}),
@@ -350,7 +351,17 @@ async function main() {
     const days = values.days === undefined ? 14 : requireId(typeof values.days === 'string' ? values.days : undefined, 'Số ngày');
     const limit = values.limit === undefined ? 20 : requireId(String(values.limit), 'Giới hạn');
     const token = await readToken();
-    const load = async () => action === 'list' ? await listCourses(token)
+    let all = values.all === true;
+    if (action === 'list' && !all && !values.json && process.stdin.isTTY && process.stdout.isTTY) {
+      printCards('Chọn phạm vi môn học', [
+        { title: '1 · Năm học hiện tại', lines: ['Nhấn Enter để chọn nhanh.'] },
+        { title: '2 · Tất cả môn', lines: ['Bao gồm các năm học trước.'] },
+      ]);
+      const choice = (await ask('Chọn 1 hoặc 2:')).trim();
+      if (!['', '1', '2'].includes(choice)) throw new Error('Vui lòng chọn 1 hoặc 2.');
+      all = choice === '2';
+    }
+    const load = async () => action === 'list' ? await listCourses(token, !all)
       : action === 'view' ? await viewCourse(token, id)
       : action === 'deadlines' ? await deadlines(token, { courseId: id, days, overdue: values.overdue === true })
       : action === 'grades' ? await grades(token, id)
@@ -360,7 +371,8 @@ async function main() {
     const result = values.json ? await load() : await withProgress(action === 'deadlines' ? 'Đang kiểm tra hạn từ Moodle…' : 'Đang đọc dữ liệu Moodle…', load);
     reportWarnings(result.warnings);
     if (values.json) show(result, { json: true });
-    else if ('courses' in result) printCards(`Môn học · ${result.courses.length}`, result.courses.map(course => ({ title: `#${course.id} · ${course.fullname}`, lines: [course.webUrl] })));
+    else if ('courses' in result) printCards(`${result.academicYear ? `Môn học ${result.academicYear}` : 'Tất cả môn học'} · ${result.courses.length}`,
+      result.courses.map(course => ({ title: `#${course.id} · ${course.fullname}`, lines: [course.webUrl] })));
     else if ('sections' in result) printCards(`Nội dung môn học · ${result.sections.length}`, result.sections.map(section => ({
       title: section.name,
       lines: [section.summaryText, ...section.modules.flatMap(module => [`${module.modname}: ${module.name}`, module.descriptionText, module.url ?? '']).filter(Boolean)],
@@ -446,22 +458,22 @@ async function main() {
   } else {
     if (command && command !== '--help') throw new Error(`Lệnh không hợp lệ: ${command}`);
     printCards('Lệnh và tùy chọn', [
-      { title: 'Tài khoản & chẩn đoán', lines: ['course doctor [--json]', 'course auth login',
-        'course auth status [--json]', 'course auth logout', 'course probe [--json]'] },
-      { title: 'Môn học', lines: ['course list [--json]', 'course view &lt;course-id&gt; [--json]',
-        'course deadlines [--course &lt;course-id&gt;] [--days &lt;số-ngày&gt;] [--overdue] [--json]',
-        'course grades --course &lt;course-id&gt; [--json]', 'course notices --course &lt;course-id&gt; [--json]',
-        'course calendar [--course &lt;course-id&gt;] [--days &lt;số-ngày&gt;] [--json]',
-        'course progress --course &lt;course-id&gt; [--json]', 'course notifications [--limit &lt;số&gt;] [--json]'] },
-      { title: 'Diễn đàn', lines: ['course forum list [--course &lt;course-id&gt;] [--json]',
-        'course forum discussions &lt;forum-id&gt; [--page &lt;số&gt;] [--json]',
-        'course forum view &lt;discussion-id&gt; [--json]'] },
-      { title: 'Bài tập', lines: ['course assignment list [--course &lt;course-id&gt;] [--json]',
-        'course assignment view|status &lt;assignment-id&gt; [--json]',
-        'course assignment download &lt;assignment-id&gt; [--output &lt;thư-mục&gt;] [--json]',
+      { title: 'Tài khoản & chẩn đoán', lines: ['course doctor', 'course auth login',
+        'course auth status', 'course auth logout', 'course probe'] },
+      { title: 'Môn học', lines: ['course list', 'course view &lt;course-id&gt;',
+        'course deadlines [--course &lt;course-id&gt;] [--days &lt;số-ngày&gt;] [--overdue]',
+        'course grades --course &lt;course-id&gt;', 'course notices --course &lt;course-id&gt;',
+        'course calendar [--course &lt;course-id&gt;] [--days &lt;số-ngày&gt;]',
+        'course progress --course &lt;course-id&gt;', 'course notifications [--limit &lt;số&gt;]'] },
+      { title: 'Diễn đàn', lines: ['course forum list [--course &lt;course-id&gt;]',
+        'course forum discussions &lt;forum-id&gt; [--page &lt;số&gt;]',
+        'course forum view &lt;discussion-id&gt;'] },
+      { title: 'Bài tập', lines: ['course assignment list [--course &lt;course-id&gt;]',
+        'course assignment view|status &lt;assignment-id&gt;',
+        'course assignment download &lt;assignment-id&gt; [--output &lt;thư-mục&gt;]',
         'course assignment submit &lt;assignment-id&gt; [files...] [--text-file &lt;path&gt;] [--draft]'] },
-      { title: 'Quiz', lines: ['course quiz list [--course &lt;course-id&gt;] [--json]',
-        'course quiz view|attempts &lt;quiz-id&gt; [--json]', 'course quiz status|review &lt;attempt-id&gt; [--json]',
+      { title: 'Quiz', lines: ['course quiz list [--course &lt;course-id&gt;]',
+        'course quiz view|attempts &lt;quiz-id&gt;', 'course quiz status|review &lt;attempt-id&gt;',
         'course quiz start &lt;quiz-id&gt;', 'course quiz resume|submit &lt;attempt-id&gt;'] },
     ]);
   }

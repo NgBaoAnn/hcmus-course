@@ -23,7 +23,7 @@ Không dùng `npm link` vẫn chạy được từ thư mục dự án:
 ```sh
 npm run build
 node dist/course.js --help
-node dist/course.js list --json
+node dist/course.js list
 ```
 
 Sau khi sửa mã nguồn `.ts`, chạy lại `npm run build`; `dist/` là đầu ra biên dịch,
@@ -48,26 +48,27 @@ quyền.
 ## Lệnh đọc
 
 ```sh
-course list [--json]
-course view <course-id> [--json]
-course assignment list [--course <course-id>] [--json]
-course assignment view <assignment-id> [--json]
-course assignment status <assignment-id> [--json]
-course assignment download <assignment-id> [--output <directory>] [--json]
-course quiz list [--course <course-id>] [--json]
-course quiz view <quiz-id> [--json]
-course quiz attempts <quiz-id> [--json]
-course quiz status <attempt-id> [--json]
-course quiz review <attempt-id> [--json]
-course deadlines [--course <course-id>] [--days <positive-integer>] [--overdue] [--json]
-course calendar [--course <course-id>] [--days <positive-integer>] [--json]
-course progress --course <course-id> [--json]
-course notifications [--limit <positive-integer>] [--json]
-course forum list [--course <course-id>] [--json]
-course forum discussions <forum-id> [--page <positive-integer>] [--json]
-course forum view <discussion-id> [--json]
-course grades --course <course-id> [--json]
-course notices --course <course-id> [--json]
+course list
+course list --all
+course view <course-id>
+course assignment list [--course <course-id>]
+course assignment view <assignment-id>
+course assignment status <assignment-id>
+course assignment download <assignment-id> [--output <directory>]
+course quiz list [--course <course-id>]
+course quiz view <quiz-id>
+course quiz attempts <quiz-id>
+course quiz status <attempt-id>
+course quiz review <attempt-id>
+course deadlines [--course <course-id>] [--days <positive-integer>] [--overdue]
+course calendar [--course <course-id>] [--days <positive-integer>]
+course progress --course <course-id>
+course notifications [--limit <positive-integer>]
+course forum list [--course <course-id>]
+course forum discussions <forum-id> [--page <positive-integer>]
+course forum view <discussion-id>
+course grades --course <course-id>
+course notices --course <course-id>
 ```
 
 Các ID đều là số nguyên dương và **khác loại**: Course ID lấy từ `list`, Assignment
@@ -75,6 +76,13 @@ ID từ `assignment list`, Quiz ID từ `quiz list`, Attempt ID từ `quiz attem
 Course-module ID nằm trong link website (`view.php?id=...`), không dùng thay
 Assignment ID hay Quiz ID. `quiz resume/status/submit/review` nhận **Attempt ID**.
 Forum ID lấy từ `forum list`; Discussion ID lấy từ `forum discussions`.
+
+`course list` hỏi chọn năm học hiện tại hoặc tất cả môn khi chạy trong terminal.
+Nhấn Enter để chọn năm học hiện tại; khi chạy không tương tác, lệnh cũng dùng
+lựa chọn này. `course list --all` xem mọi môn tài khoản còn được ghi danh, kể cả
+năm cũ. Năm học được nhận diện qua danh mục Moodle dạng `2026-2027` và đổi năm
+từ tháng 9 theo giờ Việt Nam. Các lệnh tìm bài tập/deadline vẫn xét mọi môn đã
+ghi danh, không phụ thuộc lựa chọn hiển thị của `course list`.
 
 `view` đọc các chủ đề, tài nguyên và hoạt động của môn. `assignment view` đọc đề,
 file đính kèm, cấu hình và trạng thái; `status` giữ trạng thái cá nhân/nhóm, gia hạn,
@@ -88,7 +96,7 @@ mục hiện tại. Không tự tải mọi link trong đề, không giải nén
 `deadlines` mặc định 14 ngày tới; `--overdue` thêm bài quá hạn chưa nộp theo trạng
 thái đọc được. Hạn Assignment áp dụng gia hạn cá nhân/nhóm; due date và cutoff
 (hạn cuối nhận bài) là hai trường riêng. Không có ngày không có nghĩa là hết hạn.
-Thời gian định dạng theo `Asia/Ho_Chi_Minh` (UTC+07:00); JSON giữ timestamp Unix.
+Thời gian định dạng theo `Asia/Ho_Chi_Minh` (UTC+07:00).
 Hạn đóng quiz và số lượt còn lại chỉ có khi API cung cấp đủ dữ liệu.
 
 `calendar` đọc sự kiện môn học, cá nhân và toàn site trong 14 ngày tới; `--course`
@@ -111,14 +119,10 @@ và thời điểm Moodle cho phép, không tự chấm essay hay mở đáp án
 chối bằng `nopermissiontoviewgrades`: đây là lỗi quyền Moodle, không phải bảng điểm
 rỗng. `notices` đọc forum announcements/news, không đọc hết các forum hay đăng bài.
 
-Các lệnh đọc trên hỗ trợ `--json`: stdout chỉ chứa kết quả JSON, timestamp và
-`warnings` có cấu trúc; stderr chứa cảnh báo/lỗi. Kết quả có warning có thể chưa
-đầy đủ dù lệnh thành công; kiểm tra `warnings` trước khi xử lý tự động. Lỗi kết
-thúc với mã khác 0. Trong terminal tương tác, output dùng thẻ, tự xuống dòng theo
-độ rộng và có màu nếu không đặt `NO_COLOR`; các lệnh tải lâu hiển thị tiến trình.
-Cảnh báo trùng nhau được gộp khi in nhưng vẫn đầy đủ trong JSON.
-`doctor`, `auth status` và `probe` cũng hiển thị thẻ trong terminal; dùng `--json`
-hoặc pipe stdout để nhận JSON như trước.
+Kết quả có cảnh báo có thể chưa đầy đủ dù lệnh thành công; lỗi kết thúc với mã
+khác 0. Trong terminal tương tác, output dùng thẻ, tự xuống dòng theo độ rộng và
+có màu nếu không đặt `NO_COLOR`; các lệnh tải lâu hiển thị tiến trình. Cảnh báo
+trùng nhau được gộp khi in. `doctor`, `auth status` và `probe` cũng hiển thị thẻ.
 `probe` được giữ để chẩn đoán tương thích: môn, Assignment, đề mẫu và quyền API;
 có tên API trong token chưa chứng minh được quyền ghi một bài cụ thể.
 
