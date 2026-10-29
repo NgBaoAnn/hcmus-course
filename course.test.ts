@@ -56,7 +56,32 @@ test('CLI help includes auth status and every command group without reading auth
   for (const args of [[], ['--help']]) {
     const result = await cli(t, args);
     assert.equal(result.code, 0); assert.equal(result.stderr, '');
-    for (const text of ['auth status', 'assignment submit', 'quiz resume', 'deadlines', 'grades', 'notices']) assert.ok(result.stdout.includes(text), text);
+    for (const text of ['auth status', 'assignment submit', 'quiz resume', 'deadlines', 'grades', 'notices',
+      'calendar', 'progress', 'notifications', 'forum discussions']) assert.ok(result.stdout.includes(text), text);
+  }
+});
+test('new read commands route through Moodle and render readable cards', async t => {
+  const responses = {
+    core_webservice_get_site_info: user,
+    core_enrol_get_users_courses: courses,
+    core_calendar_get_calendar_events: { events: [{ id: 1, name: 'Office hours', courseid: 12, timestart: Math.floor(Date.now() / 1000) + 3600 }] },
+    core_completion_get_activities_completion_status: { statuses: [{ cmid: 40, state: 1, hascompletion: true }] },
+    core_course_get_contents: [{ id: 1, name: 'Week', modules: [{ id: 40, name: 'Essay', modname: 'assign' }] }],
+    message_popup_get_popup_notifications: { unreadcount: 1, notifications: [{ id: 3, subject: 'Feedback', fullmessagehtml: '<p>Ready</p>', read: false }] },
+    mod_forum_get_forums_by_courses: [{ id: 8, course: 12, name: 'Q&A', type: 'general', cmid: 80 }],
+    mod_forum_get_forum_discussions: { discussions: [{ id: 10, discussion: 11, subject: 'Question', message: '<p>Help</p>' }] },
+    mod_forum_get_discussion_posts: { forumid: 8, courseid: 12, posts: [{ id: 10, subject: 'Question', message: '<p>Answer</p>' }] },
+  };
+  for (const [args, expected] of [
+    [['calendar'], 'Office hours'], [['progress', '--course', '12'], 'Essay'],
+    [['notifications'], 'Feedback'], [['forum', 'list', '--course', '12'], 'Q&A'],
+    [['forum', 'discussions', '8'], 'Question'], [['forum', 'view', '11'], 'Answer'],
+  ] as const) {
+    const result = await cli(t, [...args], responses, true);
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /COURSE CLI/);
+    assert.ok(result.stdout.includes(expected), args.join(' '));
+    assert.doesNotMatch(result.stdout, /UNEXPECTED_API/);
   }
 });
 test('CLI auth status verifies the saved token without returning credentials', async t => {

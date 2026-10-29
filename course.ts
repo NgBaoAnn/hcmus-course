@@ -10,6 +10,7 @@ import { listAssignments, viewAssignment, assignmentStatus, downloadAssignment, 
 import { listQuizzes, viewQuiz, quizAttempts, quizStatus, startQuiz, resumeQuiz, submitQuiz, reviewQuiz } from './quizzes.js';
 import { formatCards, formatLocalDate, formatStatus, render, requireId, show, withProgress } from './terminal.js';
 import { listCourses, viewCourse, deadlines, grades, notices, type Course, type AssignmentsResponse } from './student.js';
+import { calendar, progress, notifications, forums, forumDiscussions, forumView } from './campus.js';
 
 const configDir = join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'course-cli-spike');
 const authFile = join(configDir, 'auth.json');
@@ -302,23 +303,60 @@ async function main() {
           `Được phép nộp: ${attempt?.cansubmit ? 'Có' : 'Không'}`,
           ...(result.feedback ? [`Phản hồi: ${JSON.stringify(result.feedback)}`] : [])] }]);
     } else show(result);
-  } else if (['list', 'view', 'deadlines', 'grades', 'notices'].includes(args[0])) {
+  } else if (args[0] === 'forum') {
+    const action = args[1];
+    if (!['list', 'discussions', 'view'].includes(action)) throw new Error('Lệnh forum không hợp lệ.');
+    const { values, positionals } = parseArgs({ args: args.slice(2), allowPositionals: true, options: {
+      json: { type: 'boolean' },
+      ...(action === 'list' ? { course: { type: 'string' as const } } : {}),
+      ...(action === 'discussions' ? { page: { type: 'string' as const } } : {}),
+    } });
+    if (positionals.length !== (action === 'list' ? 0 : 1)) throw new Error('Đối số forum không hợp lệ.');
+    const id = action === 'list' ? undefined : requireId(positionals[0], action === 'view' ? 'Discussion ID' : 'Forum ID');
+    const courseId = values.course === undefined ? undefined : requireId(String(values.course), 'Course ID');
+    const page = values.page === undefined ? 1 : requireId(String(values.page), 'Số trang');
+    const token = await readToken();
+    const load = async () => action === 'list' ? await forums(token, courseId)
+      : action === 'discussions' ? await forumDiscussions(token, id, page) : await forumView(token, id);
+    const result = values.json ? await load() : await withProgress('Đang đọc diễn đàn Moodle…', load);
+    reportWarnings(result.warnings);
+    if (values.json) show(result, { json: true });
+    else if ('forums' in result) printCards(`Diễn đàn · ${result.forums.length}`, result.forums.map(forum => ({
+      title: `#${forum.id} · ${forum.name}`, lines: [`Môn: ${forum.course} · Loại: ${forum.type}`,
+        `Chủ đề: ${forum.numdiscussions ?? 'Không rõ'}`, forum.introText, forum.webUrl],
+    })));
+    else if ('discussions' in result) printCards(`Chủ đề · Forum #${result.forumid} · Trang ${result.page}`, result.discussions.map(d => ({
+      title: `#${d.discussion} · ${d.subject}`, lines: [`Trả lời: ${d.numreplies ?? 0} · Chưa đọc: ${d.numunread ?? 0}`,
+        `Đăng lúc: ${formatLocalDate(d.created)}`, d.locked ? 'Trạng thái: Đã khóa' : '', d.messageText, d.webUrl],
+    })));
+    else printCards(`Thảo luận #${result.discussionid} · ${result.posts.length} bài viết`, result.posts.map(post => ({
+      title: `#${post.id} · ${post.subject}`, lines: [field('Người viết', post.author?.fullname),
+        `Đăng lúc: ${formatLocalDate(post.timecreated)}`, post.messageText,
+        ...(post.attachments ?? []).map(file => `Tệp: ${file.filename}${file.fileurl ? ` · ${file.fileurl}` : ''}`), post.webUrl],
+    })));
+  } else if (['list', 'view', 'deadlines', 'grades', 'notices', 'calendar', 'progress', 'notifications'].includes(args[0])) {
     const action = args[0];
     const options = {
       json: { type: 'boolean' as const },
-      ...(['deadlines', 'grades', 'notices'].includes(action) ? { course: { type: 'string' as const } } : {}),
-      ...(action === 'deadlines' ? { days: { type: 'string' as const }, overdue: { type: 'boolean' as const } } : {}),
+      ...(['deadlines', 'grades', 'notices', 'calendar', 'progress'].includes(action) ? { course: { type: 'string' as const } } : {}),
+      ...(['deadlines', 'calendar'].includes(action) ? { days: { type: 'string' as const } } : {}),
+      ...(action === 'deadlines' ? { overdue: { type: 'boolean' as const } } : {}),
+      ...(action === 'notifications' ? { limit: { type: 'string' as const } } : {}),
     };
     const { values, positionals } = parseArgs({ args: args.slice(1), options, allowPositionals: true });
     if (positionals.length !== (action === 'view' ? 1 : 0)) throw new Error(`Đối số không hợp lệ cho course ${action}.`);
     const id = action === 'view' ? requireId(positionals[0], 'Course ID')
-      : values.course !== undefined || ['grades', 'notices'].includes(action) ? requireId(typeof values.course === 'string' ? values.course : undefined, 'Course ID') : undefined;
+      : values.course !== undefined || ['grades', 'notices', 'progress'].includes(action) ? requireId(typeof values.course === 'string' ? values.course : undefined, 'Course ID') : undefined;
     const days = values.days === undefined ? 14 : requireId(typeof values.days === 'string' ? values.days : undefined, 'Số ngày');
+    const limit = values.limit === undefined ? 20 : requireId(String(values.limit), 'Giới hạn');
     const token = await readToken();
     const load = async () => action === 'list' ? await listCourses(token)
       : action === 'view' ? await viewCourse(token, id)
       : action === 'deadlines' ? await deadlines(token, { courseId: id, days, overdue: values.overdue === true })
-      : action === 'grades' ? await grades(token, id) : await notices(token, id);
+      : action === 'grades' ? await grades(token, id)
+      : action === 'notices' ? await notices(token, id)
+      : action === 'calendar' ? await calendar(token, id, days)
+      : action === 'progress' ? await progress(token, id) : await notifications(token, limit);
     const result = values.json ? await load() : await withProgress(action === 'deadlines' ? 'Đang kiểm tra hạn từ Moodle…' : 'Đang đọc dữ liệu Moodle…', load);
     reportWarnings(result.warnings);
     if (values.json) show(result, { json: true });
@@ -342,6 +380,21 @@ async function main() {
     }))));
     else if ('notices' in result) printCards(`Thông báo · ${result.notices.length}`, result.notices.map(notice => ({
       title: notice.subject, lines: [field('Diễn đàn', notice.forumname), `Đăng lúc: ${formatLocalDate(notice.created)}`, notice.messageText, notice.webUrl],
+    })));
+    else if ('events' in result) printCards(`Lịch · ${result.days} ngày tới · ${result.events.length} sự kiện`, result.events.map(event => ({
+      title: `${event.eventtype === 'due' ? '⏳ ' : '◈ '}${event.name}`,
+      lines: [`Thời gian: ${formatLocalDate(event.timestart)}`, `Môn: ${event.courseid || 'Cá nhân / toàn site'}`,
+        event.descriptionText, event.webUrl],
+    })));
+    else if ('activities' in result) printCards(`Tiến độ môn #${result.courseid} · ${result.completed}/${result.total} hoàn thành`, result.activities.map(activity => ({
+      title: `${activity.state > 0 ? '✓' : '○'} ${activity.name}`,
+      lines: [`Loại: ${activity.type}`, `Trạng thái: ${activity.state === 0 ? 'Chưa hoàn thành' : activity.state === 3 ? 'Hoàn thành, chưa đạt' : 'Đã hoàn thành'}`,
+        activity.timecompleted ? `Hoàn thành lúc: ${formatLocalDate(activity.timecompleted)}` : '', activity.webUrl],
+    })));
+    else if ('notifications' in result) printCards(`Hộp thông báo · ${result.unreadcount} chưa đọc`, result.notifications.map(item => ({
+      title: `${item.read ? '◌' : '●'} ${item.subject || 'Thông báo'}`,
+      lines: [`Trạng thái: ${item.read ? 'Đã đọc' : 'Chưa đọc'}`, `Nhận lúc: ${formatLocalDate(item.timecreated)}`,
+        item.messageText, item.webUrl],
     })));
   } else if (args[0] === 'doctor') {
     const json = diagnosticJson(args.slice(1));
@@ -397,7 +450,12 @@ async function main() {
         'course auth status [--json]', 'course auth logout', 'course probe [--json]'] },
       { title: 'Môn học', lines: ['course list [--json]', 'course view &lt;course-id&gt; [--json]',
         'course deadlines [--course &lt;course-id&gt;] [--days &lt;số-ngày&gt;] [--overdue] [--json]',
-        'course grades --course &lt;course-id&gt; [--json]', 'course notices --course &lt;course-id&gt; [--json]'] },
+        'course grades --course &lt;course-id&gt; [--json]', 'course notices --course &lt;course-id&gt; [--json]',
+        'course calendar [--course &lt;course-id&gt;] [--days &lt;số-ngày&gt;] [--json]',
+        'course progress --course &lt;course-id&gt; [--json]', 'course notifications [--limit &lt;số&gt;] [--json]'] },
+      { title: 'Diễn đàn', lines: ['course forum list [--course &lt;course-id&gt;] [--json]',
+        'course forum discussions &lt;forum-id&gt; [--page &lt;số&gt;] [--json]',
+        'course forum view &lt;discussion-id&gt; [--json]'] },
       { title: 'Bài tập', lines: ['course assignment list [--course &lt;course-id&gt;] [--json]',
         'course assignment view|status &lt;assignment-id&gt; [--json]',
         'course assignment download &lt;assignment-id&gt; [--output &lt;thư-mục&gt;] [--json]',

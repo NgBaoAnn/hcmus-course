@@ -1,8 +1,9 @@
 # Course CLI
 
 CLI TypeScript cho sinh viên dùng `https://courses.fit.hcmus.edu.vn`: đọc môn học,
-đề và tài liệu, deadline, điểm, thông báo; nộp Moodle Assignment và tự nhập câu trả
-lời quiz qua API. Trình duyệt chỉ dùng cho đăng nhập Microsoft.
+đề và tài liệu, deadline, lịch, tiến độ, điểm, thông báo, diễn đàn; nộp Moodle
+Assignment và tự nhập câu trả lời quiz qua API. Trình duyệt chỉ dùng cho đăng nhập
+Microsoft.
 
 ## Cài và chạy
 
@@ -59,6 +60,12 @@ course quiz attempts <quiz-id> [--json]
 course quiz status <attempt-id> [--json]
 course quiz review <attempt-id> [--json]
 course deadlines [--course <course-id>] [--days <positive-integer>] [--overdue] [--json]
+course calendar [--course <course-id>] [--days <positive-integer>] [--json]
+course progress --course <course-id> [--json]
+course notifications [--limit <positive-integer>] [--json]
+course forum list [--course <course-id>] [--json]
+course forum discussions <forum-id> [--page <positive-integer>] [--json]
+course forum view <discussion-id> [--json]
 course grades --course <course-id> [--json]
 course notices --course <course-id> [--json]
 ```
@@ -67,6 +74,7 @@ Các ID đều là số nguyên dương và **khác loại**: Course ID lấy t�
 ID từ `assignment list`, Quiz ID từ `quiz list`, Attempt ID từ `quiz attempts`.
 Course-module ID nằm trong link website (`view.php?id=...`), không dùng thay
 Assignment ID hay Quiz ID. `quiz resume/status/submit/review` nhận **Attempt ID**.
+Forum ID lấy từ `forum list`; Discussion ID lấy từ `forum discussions`.
 
 `view` đọc các chủ đề, tài nguyên và hoạt động của môn. `assignment view` đọc đề,
 file đính kèm, cấu hình và trạng thái; `status` giữ trạng thái cá nhân/nhóm, gia hạn,
@@ -82,6 +90,14 @@ thái đọc được. Hạn Assignment áp dụng gia hạn cá nhân/nhóm; du
 (hạn cuối nhận bài) là hai trường riêng. Không có ngày không có nghĩa là hết hạn.
 Thời gian định dạng theo `Asia/Ho_Chi_Minh` (UTC+07:00); JSON giữ timestamp Unix.
 Hạn đóng quiz và số lượt còn lại chỉ có khi API cung cấp đủ dữ liệu.
+
+`calendar` đọc sự kiện môn học, cá nhân và toàn site trong 14 ngày tới; `--course`
+chỉ xem một môn, `--days` tối đa 365. Đây là lịch Moodle, có thể chứa những sự kiện
+khác ngoài hạn Assignment/Quiz. `progress` xem hoạt động có theo dõi hoàn thành
+trong một môn, gồm trạng thái và liên kết. `notifications` đọc tối đa 20 thông báo
+mới nhất, `--limit` tối đa 100; lệnh không đánh dấu đã đọc. `forum list` liệt kê
+diễn đàn, `forum discussions` xem chủ đề theo trang 20 mục, và `forum view` đọc bài
+viết, phản hồi, file đính kèm. Các lệnh diễn đàn không ghi bài hay đánh dấu đã đọc.
 
 **Giới hạn chỉ đọc của quiz:** `list/view/attempts/status/review` và `deadlines`
 không gọi API có thể xử lý hết giờ. Vì Moodle có thể tự nộp khi gọi API lấy dữ liệu,
