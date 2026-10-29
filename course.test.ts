@@ -208,6 +208,18 @@ test('CLI JSON retains IDs, timestamps and structured warnings while diagnostics
   assert.equal(data.assignments[0].webUrl, 'https://courses.fit.hcmus.edu.vn/mod/assign/view.php?id=40');
   assert.deepEqual(data.warnings, [warning]); assert.ok(!result.stdout.includes(token));
 });
+test('deadlines print identical Moodle access warnings once with a count', async t => {
+  const warning = { warningcode: '1', message: 'No access rights in module context' };
+  const result = await cli(t, ['deadlines'], {
+    core_webservice_get_site_info: user,
+    core_enrol_get_users_courses: courses,
+    mod_assign_get_assignments: { courses: [], warnings: Array(36).fill(warning) },
+    mod_quiz_get_quizzes_by_courses: { quizzes: [], warnings: [] },
+  }, true);
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.stderr.trim(), 'Cảnh báo (36): No access rights in module context');
+  assert.match(result.stdout, /14 ngày tới/);
+});
 test('CLI reports Moodle grade denial on stderr without fabricating grades', async t => {
   const result = await cli(t, ['grades', '--course', '12', '--json'], {
     core_webservice_get_site_info: user,

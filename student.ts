@@ -105,10 +105,16 @@ export async function deadlines(token: string, { courseId, days = 14, overdue = 
   const include = (due: number | undefined, pending: boolean) => due !== undefined && due > 0 && due <= until && (due >= now || (overdue && pending));
   if (!ids.length) return { deadlines: [], warnings, timezone: 'Asia/Ho_Chi_Minh' };
   const assignments = await read<AssignmentsResponse>(token, 'mod_assign_get_assignments', courseParams(ids), warnings);
-  // Sequential lookups keep request concurrency at one, including large enrolled course lists.
-  for (const course of assignments?.courses ?? []) {
-    for (const assignment of course.assignments ?? []) {
-      const status = await read<SubmissionStatus>(token, 'mod_assign_get_submission_status', { assignid: assignment.id }, warnings);
+  // An extension can move a past due date into this window, but cannot move a later due date earlier.
+  const candidates = (assignments?.courses ?? []).flatMap(course => (course.assignments ?? [])
+    .filter(assignment => assignment.duedate === undefined || assignment.duedate <= until)
+    .map(assignment => ({ course, assignment })));
+  for (let offset = 0; offset < candidates.length; offset += 6) {
+    const batch = candidates.slice(offset, offset + 6);
+    const statuses = await Promise.all(batch.map(({ assignment }) =>
+      read<SubmissionStatus>(token, 'mod_assign_get_submission_status', { assignid: assignment.id }, warnings)));
+    for (const [index, { course, assignment }] of batch.entries()) {
+      const status = statuses[index];
       const last = status?.lastattempt;
       if (status && !last) warn(warnings, 'assignment', assignment.id, 'Không xác định được trạng thái và gia hạn.');
       const submission = last?.teamsubmission ?? last?.submission;

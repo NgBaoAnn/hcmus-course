@@ -97,6 +97,27 @@ test('deadline window defaults to 14 days and retains quiz close dates without p
   assert.ok(calls.every((call) => call.method !== 'mod_quiz_get_attempt_access_information'));
 });
 
+test('deadlines skip far-future assignments and bound concurrent status reads', async t => {
+  let active = 0;
+  let peak = 0;
+  const calls = fixture(t, {
+    mod_assign_get_assignments: { courses: [{ id: 12, assignments: [
+      ...Array.from({ length: 15 }, (_, i) => ({ id: i + 1, name: `Past ${i}`, duedate: now - day })),
+      { id: 99, name: 'Far future', duedate: now + 30 * day },
+    ] }], warnings: [] },
+    mod_assign_get_submission_status: async () => {
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise(resolve => setTimeout(resolve, 5));
+      active--;
+      return { lastattempt: { extensionduedate: 0, submission: { status: 'draft' } }, warnings: [] };
+    },
+  });
+  await deadlines(token, { courseId: 12 });
+  assert.equal(calls.filter(call => call.method === 'mod_assign_get_submission_status').length, 15);
+  assert.ok(peak > 1 && peak <= 6, `Expected bounded concurrency, got ${peak}`);
+});
+
 test('deadlines never query attempt access, including possibly expired and overdue attempts', async (t) => {
   for (const [label, state, started] of [
     ['running', 'inprogress', now],
