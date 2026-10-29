@@ -5,6 +5,24 @@ Monorepo npm workspaces gồm hai package:
 - `packages/cli`: CLI TypeScript hiện có, lệnh `course`.
 - `packages/mcp`: chỗ dành cho MCP server sẽ phát triển sau; chưa có server chạy.
 
+## Skill cho agent
+
+Repo có ba skill tại `skills/` để agent biết cách dùng CLI: `using-course-cli`
+cho lệnh đọc và xác thực, `submitting-course-assignments` cho nộp Assignment,
+và `taking-course-quizzes` cho làm Quiz. Chúng là tài liệu hướng dẫn agent,
+không thay đổi hành vi của lệnh `course`.
+
+Codex và các agent hỗ trợ chuẩn Agent Skills có thể nạp chúng từ
+`~/.agents/skills/`. Từ thư mục gốc repo, cài bằng:
+
+```sh
+mkdir -p ~/.agents/skills
+cp -R skills/using-course-cli skills/submitting-course-assignments skills/taking-course-quizzes ~/.agents/skills/
+```
+
+Mở phiên agent mới sau khi cài để danh sách skill được cập nhật. Khi nâng cấp
+repo, chạy lại lệnh `cp -R` để đồng bộ nội dung mới.
+
 CLI cho sinh viên dùng `https://courses.fit.hcmus.edu.vn`: đọc môn học,
 đề và tài liệu, deadline, lịch, tiến độ, điểm, thông báo, diễn đàn; nộp Moodle
 Assignment và tự nhập câu trả lời quiz qua API. Trình duyệt chỉ dùng cho đăng nhập
