@@ -12,8 +12,8 @@
   "category": "Education",
   "keywords": ["hcmus", "moodle", "course", "student"],
   "author": { "name": "NgBaoAnn", "url": "https://github.com/NgBaoAnn" },
-  "homepage": "https://github.com/NgBaoAnn/portal-cli",
-  "repository": "https://github.com/NgBaoAnn/portal-cli",
+  "homepage": "https://github.com/NgBaoAnn/hcmus-course",
+  "repository": "https://github.com/NgBaoAnn/hcmus-course",
   "license": "UNLICENSED",
   "skills": ["./plugins/hcmus-course/skills"]
 }
