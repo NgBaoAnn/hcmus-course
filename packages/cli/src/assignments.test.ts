@@ -17,7 +17,7 @@ function assignment() {
 }
 function status() {
   return { lastattempt: { submissionsenabled: true, locked: false, canedit: true, caneditowner: true, cansubmit: true,
-    extensionduedate: 0, usergroups: [8], submissiongroup: 8, submissiongroupmemberswhoneedtosubmit: [7, 9],
+    extensionduedate: 0 as number | null, usergroups: [8], submissiongroup: 8, submissiongroupmemberswhoneedtosubmit: [7, 9],
     submission: { id: 14, userid: 7, attemptnumber: 0, status: 'draft', timemodified: 1, plugins: [
       { type: 'file', fileareas: [{ area: 'submission_files', files: [{ filename: 'old.txt', filesize: 3, fileurl: site + '/webservice/pluginfile.php/old' }] }] },
       { type: 'onlinetext', editorfields: [{ name: 'onlinetext', text: 'Keep me', format: 2 }], fileareas: [] },
@@ -234,10 +234,24 @@ test('finalize timeout after server accepted submission is resolved by reading',
   assert.equal(f.calls.filter(c => c.name === 'mod_assign_submit_for_grading').length, 1);
 });
 
+test('null extension date means no extension and permits an otherwise valid submission', async t => {
+  const f = await setup(t);
+  f.s.lastattempt.extensionduedate = null;
+  f.a.duedate = Math.floor(Date.now() / 1000) + 86400;
+  const result = await submitAssignment(token, 4, { files: [f.file], confirm: async preview => {
+    assert.match(preview, /Hạn:/);
+    assert.doesNotMatch(preview, /Invalid Date|NaN/);
+    return true;
+  } });
+  assert.equal(result.state, 'submitted');
+  assert.ok(writes(f).some(call => call.name === 'mod_assign_save_submission'));
+});
+
 test('missing access dates and mismatched submission owner fail closed', async t => {
-  for (const kind of ['dates', 'owner']) await t.test(kind, async t => {
+  for (const kind of ['dates', 'extension', 'owner']) await t.test(kind, async t => {
     const f = await setup(t);
     if (kind === 'dates') Object.assign(f.a, { cutoffdate: undefined });
+    else if (kind === 'extension') Object.assign(f.s.lastattempt, { extensionduedate: undefined });
     else f.s.lastattempt.submission.userid = 99;
     await assert.rejects(submitAssignment(token, 4, { files: [f.file], confirm: async () => true }));
     assert.equal(writes(f).length, 0);

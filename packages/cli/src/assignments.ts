@@ -15,7 +15,7 @@ interface Status {
   lastattempt?: {
     submission?: Submission; teamsubmission?: Submission; submissiongroup?: number;
     submissiongroupmemberswhoneedtosubmit?: number[]; submissionsenabled: boolean; locked: boolean;
-    canedit: boolean; caneditowner: boolean; cansubmit: boolean; extensionduedate: number; timelimit?: number; usergroups: number[];
+    canedit: boolean; caneditowner: boolean; cansubmit: boolean; extensionduedate: number | null; timelimit?: number; usergroups: number[];
   };
   feedback?: unknown; warnings?: MoodleWarning[];
 }
@@ -143,14 +143,15 @@ export async function submitAssignment(token: string, id: InputId, options: Subm
     if (![0, 1].includes(a.submissiondrafts) || ![0, 1].includes(a.teamsubmission)) fail('Thiếu cấu hình nộp bài.');
     if (options.draft && !a.submissiondrafts) fail('Bài này lưu là nộp chính thức; không hỗ trợ --draft.');
     const current = submission(s, a);
-    if (![a.duedate, a.cutoffdate, a.allowsubmissionsfromdate, last.extensionduedate].every(value => Number.isSafeInteger(value) && value >= 0)) fail('Thiếu thông tin thời gian truy cập.');
+    const extension = last.extensionduedate === null ? 0 : last.extensionduedate;
+    if (![a.duedate, a.cutoffdate, a.allowsubmissionsfromdate, extension].every(value => Number.isSafeInteger(value) && value >= 0)) fail('Thiếu thông tin thời gian truy cập.');
     if (current && (a.teamsubmission ? current.groupid !== last.submissiongroup : current.userid !== user.userid)) fail('Không xác minh được chủ bài nộp.');
     if (current?.status === 'submitted') fail('Bài đã nộp; CLI không mở lại bài.');
     if (current && (!Number.isSafeInteger(current.attemptnumber) || !Array.isArray(current.plugins))) fail('Không xác minh được attempt/plugin.');
     if (a.teamsubmission && (!last.submissiongroup || !last.usergroups?.includes(last.submissiongroup) || !current ||
       (a.requireallteammemberssubmit && !Array.isArray(last.submissiongroupmemberswhoneedtosubmit)))) fail('Không xác minh được nhóm và trạng thái thành viên.');
     const now = Date.now() / 1000;
-    if (a.allowsubmissionsfromdate > now || (a.cutoffdate > 0 && Math.max(a.cutoffdate, last.extensionduedate) <= now)) fail('Bài chưa mở hoặc đã quá cutoff.');
+    if (a.allowsubmissionsfromdate > now || (a.cutoffdate > 0 && Math.max(a.cutoffdate, extension) <= now)) fail('Bài chưa mở hoặc đã quá cutoff.');
   }
   check(before);
   const paths = options.files ?? [];
@@ -204,7 +205,7 @@ export async function submitAssignment(token: string, id: InputId, options: Subm
   const preview = [
     `Tài khoản: ${user.fullname ?? user.userid} (${user.userid})`, `Môn: ${a.coursename}; Bài: ${a.name} (${id})`,
     `Attempt: ${current?.attemptnumber ?? 'mới'}; trạng thái: ${current?.status ?? 'new'}`,
-    `Hạn: ${date(Math.max(a.duedate, before.lastattempt!.extensionduedate))}; cutoff: ${date(a.cutoffdate)}`,
+    `Hạn: ${date(Math.max(a.duedate, before.lastattempt!.extensionduedate ?? 0))}; cutoff: ${date(a.cutoffdate)}`,
     a.teamsubmission ? `Tác động đến cả nhóm ${before.lastattempt!.submissiongroup}; thành viên còn phải xác nhận: ${before.lastattempt!.submissiongroupmemberswhoneedtosubmit?.join(', ') ?? 'không yêu cầu'}. Chỉ xác nhận cho tài khoản hiện tại.` : '',
     newFiles.length ? `Thay thế toàn bộ file hiện tại: ${(oldFiles ?? []).map(f => f.filename).join(', ') || '(không có)'}\nFile mới: ${newFiles.map(f => `${f.filename} (${f.filesize} bytes)`).join(', ')}` : 'Giữ nguyên file hiện tại.',
     options.textFile !== undefined ? `Thay online text bằng UTF-8 plain text (${editor!.text.length} ký tự):\n${editor!.text.replaceAll('<', '&lt;').replaceAll('>', '&gt;')}` : 'Giữ nguyên online text.',

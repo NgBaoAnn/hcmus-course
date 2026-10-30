@@ -24,7 +24,7 @@ interface CourseModule {
 interface CourseSection { id: number; name: string; summary?: string; modules?: CourseModule[] }
 interface SubmissionStatus extends WithWarnings {
   lastattempt?: {
-    extensionduedate: number; submissiongroup?: number;
+    extensionduedate: number | null; submissiongroup?: number;
     submission?: { status: string }; teamsubmission?: { status: string };
   };
 }
