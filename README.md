@@ -17,7 +17,7 @@ khởi động lại app, mở Plugins Directory, chọn marketplace **HCMUS Cou
 Repo khai báo plugin trong `plugins/hcmus-course/plugin.json` và marketplace trong
 `.agents/plugins/marketplace.json`; plugin cần executor cục bộ để chạy `course`.
 Sau khi cài plugin, cài CLI theo mục tiếp theo rồi chạy `course doctor` và
-`course auth login`. CLI hiện chưa phát hành lên npm.
+`course auth login`.
 
 Trong chat Codex có thể hỏi trực tiếp: “Còn deadline nào tôi chưa làm?”,
 “Đọc đề bài tập đó và giúp tôi làm”, hoặc “Nộp bài này giúp tôi”. Agent dùng CLI
@@ -60,16 +60,24 @@ Microsoft.
 ## Cài và chạy
 
 Cần Node.js **22 trở lên** và trình duyệt mặc định của hệ điều hành cho `auth login`.
+Khi phiên bản đã có trên npm (`npm view hcmus-course-cli version`), cài bằng:
 
 ```sh
-npm install          # biên dịch CLI vào packages/cli/dist/
-cd packages/cli
-npm link             # đăng ký lệnh course trên máy
-cd ../..
+npm install -g hcmus-course-cli
 course --help
 course doctor
 course auth login
 course auth status
+```
+
+Để chạy mã nguồn trong repo trước khi phát hành hoặc khi phát triển CLI:
+
+```sh
+npm ci
+cd packages/cli
+npm link
+cd ../..
+course --help
 ```
 
 Không dùng `npm link` vẫn chạy được từ thư mục dự án:

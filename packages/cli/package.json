@@ -1,10 +1,22 @@
 {
-  "name": "course-cli",
-  "version": "0.0.0",
-  "private": true,
+  "name": "hcmus-course-cli",
+  "version": "0.1.0",
+  "description": "Command-line client for HCMUS FIT Moodle Course",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NgBaoAnn/portal-cli.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/NgBaoAnn/portal-cli#readme",
+  "bugs": "https://github.com/NgBaoAnn/portal-cli/issues",
+  "keywords": ["hcmus", "moodle", "course", "cli"],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "type": "module",
   "bin": {
-    "course": "./dist/course.js"
+    "course": "dist/course.js"
   },
   "files": ["dist/*.js", "!dist/*.test.js", "README.md"],
   "scripts": {
