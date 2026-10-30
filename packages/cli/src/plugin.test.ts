@@ -46,6 +46,7 @@ test('GitHub plugin manifests and OpenCode package share one version and skill s
   }
   const ui = portable.extensions['com.openai'].interface;
   assert.ok(ui.longDescription);
+  assert.ok(ui.shortDescription.length <= 30);
   assert.ok(ui.websiteURL);
   for (const field of ['composerIcon', 'logo']) {
     await access(new URL(ui[field], pluginRoot));
