@@ -1,0 +1,12 @@
+{
+  "name": "hcmus-course-marketplace",
+  "owner": { "name": "NgBaoAnn" },
+  "metadata": { "description": "HCMUS Course skills for local coding agents" },
+  "plugins": [
+    {
+      "name": "hcmus-course",
+      "source": "./plugins/hcmus-course",
+      "description": "Read HCMUS Course and prepare approved Moodle submissions"
+    }
+  ]
+}

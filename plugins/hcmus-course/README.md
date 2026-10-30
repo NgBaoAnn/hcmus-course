@@ -1,6 +1,6 @@
 # HCMUS Course agent plugin
 
-Four skills guide local Codex, Claude Code, and OpenCode agents through the
+Four skills guide local Codex, Claude Code, OpenCode, Antigravity, Cursor, and other agents through the
 `hcmus-course-cli` commands for HCMUS FIT Moodle. Install the CLI separately with
 `npm install -g hcmus-course-cli`; run `course doctor` and `course auth login` on
 the student's computer. The plugin contains no Moodle credentials or MCP server.

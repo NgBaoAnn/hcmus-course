@@ -1,7 +1,8 @@
 # Course
 
 Repo gồm CLI TypeScript tại `packages/cli` và plugin agent tại `plugins/hcmus-course`.
-Plugin chứa skills hướng dẫn Codex, Claude Code và OpenCode dùng lệnh `course`; CLI được cài riêng từ npm.
+Plugin chứa skills hướng dẫn Codex, Claude Code, OpenCode, Antigravity, Cursor,
+GitHub Copilot CLI và các agent hỗ trợ Agent Skills dùng lệnh `course`; CLI được cài riêng từ npm.
 
 ## Cài plugin cho agent
 
@@ -46,10 +47,55 @@ opencode plugin add 'github:NgBaoAnn/portal-cli#main::path:plugins/hcmus-course'
 Khởi động lại OpenCode và dùng skill `setup` để kiểm tra CLI. Hướng dẫn cài, cập
 nhật và cách nạp skills thủ công cho bản cũ nằm tại [.opencode/INSTALL.md](.opencode/INSTALL.md).
 
+### Antigravity
+
+Antigravity CLI/App cài plugin trực tiếp từ GitHub:
+
+```sh
+agy plugin install https://github.com/NgBaoAnn/portal-cli
+agy plugin list
+```
+
+Cài lại bằng lệnh `agy plugin install` khi có bản mới. Plugin dùng manifest
+`.antigravity-plugin/plugin.json` ở gốc repo và cùng bốn skill ở
+`plugins/hcmus-course/skills/`.
+
+### GitHub Copilot CLI
+
+Copilot CLI đọc được marketplace Claude đã có trong repo:
+
+```sh
+copilot plugin marketplace add NgBaoAnn/portal-cli
+copilot plugin install hcmus-course@hcmus-course-marketplace
+```
+
+### Cursor và Gemini CLI
+
+Cài bốn skill cho tài khoản máy bằng bộ cài Agent Skills. Chọn đúng agent:
+
+```sh
+npx skills add https://github.com/NgBaoAnn/portal-cli/tree/main/plugins/hcmus-course -g -a cursor --skill '*' -y
+npx skills add https://github.com/NgBaoAnn/portal-cli/tree/main/plugins/hcmus-course -g -a gemini-cli --skill '*' -y
+```
+
+Chỉ chạy dòng ứng với agent đang dùng. Cursor còn có manifest
+`.cursor-plugin/marketplace.json` để nhóm dùng Cursor Team Marketplace nhập repo
+này từ GitHub. Trong Gemini CLI, chạy `/skills list` để kiểm tra sau khi cài.
+
+### Agent Skills khác
+
+Với agent được `npx skills` hỗ trợ, thay `cursor` ở lệnh trên bằng tên agent
+(ví dụ `windsurf`, `cline`, `continue`, `kimi-cli`) và khởi động phiên mới.
+`-g` cài cho tài khoản máy; bỏ `-g` để chỉ dùng trong dự án hiện tại. Bộ cài
+`skills` yêu cầu Node.js 22.20 trở lên. Mọi agent vẫn cần chạy cục bộ, thấy
+được lệnh `course`, và có PTY giữ phiên nếu muốn thực hiện thao tác ghi.
+
 **Cập nhật:** Claude Code dùng `claude plugin marketplace update hcmus-course-marketplace`
 rồi kiểm tra bản plugin mới trong `/plugin`;
 Codex cập nhật marketplace/plugin trong Plugins Directory; OpenCode dùng
-`opencode plugin update` hoặc gỡ và cài lại Git package. CLI cập nhật riêng bằng
+`opencode plugin update` hoặc gỡ và cài lại Git package; Copilot CLI dùng
+`copilot plugin update hcmus-course`; skills cài bằng `npx skills` cập nhật
+qua `npx skills update -g`. CLI cập nhật riêng bằng
 `npm update -g hcmus-course-cli`. Phiên agent mới sẽ nạp skills mới.
 
 Gói cài từ GitHub có thể dùng ngay sau khi nhánh này được nhập vào `main`.

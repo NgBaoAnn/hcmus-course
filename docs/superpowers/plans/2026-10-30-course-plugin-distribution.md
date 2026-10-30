@@ -65,3 +65,13 @@
 ## Public-directory handoff
 
 After Tasks 1–3, review the final listing and ZIP with the owner. Submit the Codex ZIP in the OpenAI developer portal after developer identity checks and the owner's approval. Submit the Claude GitHub repo through Anthropic's paid-plan directory portal after the owner's approval. Report review status and portal findings; public directory publication happens only after platform approval and owner authorization.
+
+### Task 4: Antigravity, Cursor, Copilot, and generic skills
+
+**Files:** Add `.antigravity-plugin/plugin.json`, `.cursor-plugin/marketplace.json`, and `plugins/hcmus-course/.cursor-plugin/plugin.json`; update plugin versions, the package script, structural tests, README, and release guidance.
+
+- [ ] Add structural tests for shared version, canonical skill paths, and new marketplace sources; confirm RED.
+- [ ] Add native Antigravity and Cursor manifests and document Copilot CLI's reuse of the Claude marketplace.
+- [ ] Document `npx skills add` for Gemini CLI and other Agent Skills hosts using the canonical skills.
+- [ ] Run `agy plugin validate --strict`, a `skills` discovery/install, the full CLI suite, and regenerate/inspect the Codex ZIP.
+- [ ] Push the changes to the existing distribution PR; keep official directory submissions as a separate owner step.

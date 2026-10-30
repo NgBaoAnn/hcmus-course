@@ -37,3 +37,7 @@ Students should install the skills and the published `hcmus-course-cli` from Git
 ## Remaining owner steps
 
 OpenAI's public directory requires a verified developer identity and ZIP upload/review; Anthropic's directory requires a paid Claude account and repository submission. These portal actions and final public publication happen only after the owner reviews the finished package and listing.
+
+## 2026-10-30 addendum: more coding agents
+
+The owner also wants Superpowers-style installation for Antigravity and more local coding agents. Add a root Antigravity manifest that points at the canonical nested skills; add a Cursor marketplace and per-plugin manifest. GitHub Copilot CLI can consume the existing Claude marketplace. Gemini CLI and other Agent Skills hosts use the `skills` CLI with the GitHub URL of the canonical plugin subdirectory, so no duplicate skill files or MCP service is needed. Document host-specific installation and the local-only CLI/PTY requirement. Keep directory submission separate from GitHub installation.
