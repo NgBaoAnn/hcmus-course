@@ -1,0 +1,12 @@
+{
+  "name": "hcmus-course-marketplace",
+  "metadata": { "description": "Skills for local HCMUS FIT Moodle workflows" },
+  "owner": { "name": "NgBaoAnn" },
+  "plugins": [
+    {
+      "name": "hcmus-course",
+      "source": "./plugins/hcmus-course",
+      "description": "Use the Course CLI to read Moodle data and prepare approved submissions"
+    }
+  ]
+}

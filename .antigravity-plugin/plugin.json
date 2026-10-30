@@ -1,0 +1,19 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "hcmus-course",
+  "displayName": "HCMUS Course",
+  "version": "0.3.0",
+  "description": "Use the local HCMUS Course CLI to read Moodle data, track deadlines, and prepare approved assignment and quiz submissions.",
+  "logo": "plugins/hcmus-course/assets/logo.png",
+  "suggestedPrompts": [
+    "What unfinished HCMUS Course deadlines do I have?",
+    "Read this assignment and help me prepare a submission"
+  ],
+  "category": "Education",
+  "keywords": ["hcmus", "moodle", "course", "student"],
+  "author": { "name": "NgBaoAnn", "url": "https://github.com/NgBaoAnn" },
+  "homepage": "https://github.com/NgBaoAnn/portal-cli",
+  "repository": "https://github.com/NgBaoAnn/portal-cli",
+  "license": "UNLICENSED",
+  "skills": ["./plugins/hcmus-course/skills"]
+}

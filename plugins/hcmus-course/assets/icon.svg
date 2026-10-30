@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="HCMUS Course">
+  <rect width="512" height="512" rx="112" fill="#0B5F8C"/>
+  <path d="M108 176 256 96l148 80-148 80-148-80Zm44 67 104 56 104-56v97l-104 56-104-56v-97Z" fill="#FFF"/>
+  <path d="M404 180v133" fill="none" stroke="#76DBCD" stroke-width="24" stroke-linecap="round"/>
+  <circle cx="404" cy="336" r="20" fill="#76DBCD"/>
+</svg>

@@ -1,9 +1,108 @@
 # Course
 
-Repo gồm CLI TypeScript tại `packages/cli` và plugin Codex tại `plugins/hcmus-course`.
-Plugin chỉ chứa skills hướng dẫn agent dùng lệnh `course`; CLI được cài riêng.
+Repo gồm CLI TypeScript tại `packages/cli` và plugin agent tại `plugins/hcmus-course`.
+Plugin chứa skills hướng dẫn Codex, Claude Code, OpenCode, Antigravity, Cursor,
+GitHub Copilot CLI và các agent hỗ trợ Agent Skills dùng lệnh `course`; CLI được cài riêng từ npm.
 
-## Plugin Codex cho agent
+## Cài plugin cho agent
+
+Plugin cần agent chạy **cục bộ** trên máy có Node.js 22 trở lên và có quyền gọi CLI.
+Sau khi cài plugin, hãy yêu cầu agent “Thiết lập HCMUS Course”, hoặc tự chạy:
+
+```sh
+npm install -g hcmus-course-cli
+course doctor
+course auth login
+```
+
+Đăng nhập Microsoft trong trình duyệt mặc định. Không gửi mật khẩu hoặc token cho agent.
+
+### Claude Code
+
+Trong Claude Code, chạy:
+
+```text
+/plugin marketplace add NgBaoAnn/portal-cli
+/plugin install hcmus-course@hcmus-course-marketplace
+```
+
+Hoặc dùng terminal: `claude plugin marketplace add NgBaoAnn/portal-cli`, rồi
+`claude plugin install hcmus-course@hcmus-course-marketplace`.
+
+### Codex
+
+Trong Codex CLI, chạy `codex plugin marketplace add NgBaoAnn/portal-cli`, rồi mở
+`/plugins` để chọn **HCMUS Course** từ marketplace `hcmus-course-local`. Trong Codex
+desktop, thêm cùng GitHub marketplace trong Plugins Directory rồi cài plugin.
+Plugin cần local executor để chạy `course`.
+
+### OpenCode 2
+
+Chạy:
+
+```sh
+opencode plugin add 'github:NgBaoAnn/portal-cli#main::path:plugins/hcmus-course'
+```
+
+Khởi động lại OpenCode và dùng skill `setup` để kiểm tra CLI. Hướng dẫn cài, cập
+nhật và cách nạp skills thủ công cho bản cũ nằm tại [.opencode/INSTALL.md](.opencode/INSTALL.md).
+
+### Antigravity
+
+Antigravity CLI/App cài plugin trực tiếp từ GitHub:
+
+```sh
+agy plugin install https://github.com/NgBaoAnn/portal-cli
+agy plugin list
+```
+
+Cài lại bằng lệnh `agy plugin install` khi có bản mới. Plugin dùng manifest
+`.antigravity-plugin/plugin.json` ở gốc repo và cùng bốn skill ở
+`plugins/hcmus-course/skills/`.
+
+### GitHub Copilot CLI
+
+Copilot CLI đọc được marketplace Claude đã có trong repo:
+
+```sh
+copilot plugin marketplace add NgBaoAnn/portal-cli
+copilot plugin install hcmus-course@hcmus-course-marketplace
+```
+
+### Cursor và Gemini CLI
+
+Cài bốn skill cho tài khoản máy bằng bộ cài Agent Skills. Chọn đúng agent:
+
+```sh
+npx skills add https://github.com/NgBaoAnn/portal-cli/tree/main/plugins/hcmus-course -g -a cursor --skill '*' -y
+npx skills add https://github.com/NgBaoAnn/portal-cli/tree/main/plugins/hcmus-course -g -a gemini-cli --skill '*' -y
+```
+
+Chỉ chạy dòng ứng với agent đang dùng. Cursor còn có manifest
+`.cursor-plugin/marketplace.json` để nhóm dùng Cursor Team Marketplace nhập repo
+này từ GitHub. Trong Gemini CLI, chạy `/skills list` để kiểm tra sau khi cài.
+
+### Agent Skills khác
+
+Với agent được `npx skills` hỗ trợ, thay `cursor` ở lệnh trên bằng tên agent
+(ví dụ `windsurf`, `cline`, `continue`, `kimi-cli`) và khởi động phiên mới.
+`-g` cài cho tài khoản máy; bỏ `-g` để chỉ dùng trong dự án hiện tại. Bộ cài
+`skills` yêu cầu Node.js 22.20 trở lên. Mọi agent vẫn cần chạy cục bộ, thấy
+được lệnh `course`, và có PTY giữ phiên nếu muốn thực hiện thao tác ghi.
+
+**Cập nhật:** Claude Code dùng `claude plugin marketplace update hcmus-course-marketplace`
+rồi kiểm tra bản plugin mới trong `/plugin`;
+Codex cập nhật marketplace/plugin trong Plugins Directory; OpenCode dùng
+`opencode plugin update` hoặc gỡ và cài lại Git package; Copilot CLI dùng
+`copilot plugin update hcmus-course`; skills cài bằng `npx skills` cập nhật
+qua `npx skills update -g`. CLI cập nhật riêng bằng
+`npm update -g hcmus-course-cli`. Phiên agent mới sẽ nạp skills mới.
+
+Gói cài từ GitHub có thể dùng ngay sau khi nhánh này được nhập vào `main`.
+Danh mục plugin chính thức của Claude/Codex cần quy trình xét duyệt riêng;
+hiện chưa được liệt kê ở đó.
+
+### Skills và thao tác ghi
 
 Plugin có bốn skill tại `plugins/hcmus-course/skills/`: `setup` để cài và đăng nhập,
 `using-course-cli`
@@ -11,15 +110,7 @@ cho lệnh đọc và xác thực, `submitting-course-assignments` cho nộp Ass
 và `taking-course-quizzes` cho làm Quiz. Chúng là tài liệu hướng dẫn agent,
 không thay đổi hành vi của lệnh `course`.
 
-Trong Codex desktop, thêm repo này làm marketplace cục bộ rồi cài plugin
-**HCMUS Course**. Từ thư mục gốc repo, chạy `codex plugin marketplace add .`,
-khởi động lại app, mở Plugins Directory, chọn marketplace **HCMUS Course** rồi cài.
-Repo khai báo plugin trong `plugins/hcmus-course/plugin.json` và marketplace trong
-`.agents/plugins/marketplace.json`; plugin cần executor cục bộ để chạy `course`.
-Sau khi cài plugin, cài CLI theo mục tiếp theo rồi chạy `course doctor` và
-`course auth login`.
-
-Trong chat Codex có thể hỏi trực tiếp: “Còn deadline nào tôi chưa làm?”,
+Trong chat agent có thể hỏi trực tiếp: “Còn deadline nào tôi chưa làm?”,
 “Đọc đề bài tập đó và giúp tôi làm”, hoặc “Nộp bài này giúp tôi”. Agent dùng CLI
 để tra dữ liệu; với thao tác ghi, agent chuẩn bị nội dung, trình bày bản xem trước
 và chờ bạn duyệt trong chat trước khi xác nhận lệnh.

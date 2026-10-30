@@ -12,7 +12,10 @@ test('skills-only local plugin points at this repository and requires local exec
   assert.equal(plugin.name, 'hcmus-course');
   assert.equal(plugin.extensions?.['com.openai']?.requires_local_executor, true);
   assert.equal(plugin.mcpServers, undefined);
-  assert.deepEqual((await readdir(pluginRoot)).sort(), ['plugin.json', 'skills']);
+  const files = await readdir(pluginRoot);
+  for (const expected of ['.claude-plugin', '.cursor-plugin', 'README.md', 'assets', 'package.json', 'plugin.json', 'skills', 'src']) {
+    assert.ok(files.includes(expected), `Missing plugin file: ${expected}`);
+  }
   for (const skill of ['setup', 'using-course-cli', 'submitting-course-assignments', 'taking-course-quizzes']) {
     await access(new URL(`skills/${skill}/SKILL.md`, pluginRoot));
   }
@@ -22,4 +25,46 @@ test('skills-only local plugin points at this repository and requires local exec
   assert.equal(resolve(fileURLToPath(new URL(marketplace.plugins[0].source.path, root))), resolve(fileURLToPath(pluginRoot)));
   await assert.rejects(access(new URL('mcp.json', pluginRoot)), { code: 'ENOENT' });
   await assert.rejects(access(new URL('packages/mcp/package.json', root)), { code: 'ENOENT' });
+});
+
+test('GitHub plugin manifests and OpenCode package share one version and skill set', async () => {
+  const portable = JSON.parse(await readFile(new URL('plugin.json', pluginRoot), 'utf8'));
+  const claude = JSON.parse(await readFile(new URL('.claude-plugin/plugin.json', pluginRoot), 'utf8'));
+  const claudeMarketplace = JSON.parse(await readFile(new URL('.claude-plugin/marketplace.json', root), 'utf8'));
+  const opencode = JSON.parse(await readFile(new URL('package.json', pluginRoot), 'utf8'));
+  assert.equal(portable.version, '0.3.0');
+  assert.equal(claude.version, portable.version);
+  assert.equal(opencode.version, portable.version);
+  assert.equal(claude.name, portable.name);
+  assert.equal(claudeMarketplace.plugins[0].name, portable.name);
+  assert.equal(claudeMarketplace.plugins[0].source, './plugins/hcmus-course');
+  assert.equal(opencode.exports['.'], './src/index.ts');
+  assert.equal(opencode.type, 'module');
+  const code = await readFile(new URL('src/index.ts', pluginRoot), 'utf8');
+  for (const skill of ['setup', 'using-course-cli', 'submitting-course-assignments', 'taking-course-quizzes']) {
+    assert.match(code, new RegExp(skill));
+  }
+  const ui = portable.extensions['com.openai'].interface;
+  assert.ok(ui.longDescription);
+  assert.ok(ui.shortDescription.length <= 30);
+  assert.ok(ui.websiteURL);
+  for (const field of ['composerIcon', 'logo']) {
+    await access(new URL(ui[field], pluginRoot));
+  }
+});
+
+test('Antigravity and Cursor packages reuse the canonical skills', async () => {
+  const portable = JSON.parse(await readFile(new URL('plugin.json', pluginRoot), 'utf8'));
+  const antigravity = JSON.parse(await readFile(new URL('.antigravity-plugin/plugin.json', root), 'utf8'));
+  const cursor = JSON.parse(await readFile(new URL('.cursor-plugin/plugin.json', pluginRoot), 'utf8'));
+  const cursorMarketplace = JSON.parse(await readFile(new URL('.cursor-plugin/marketplace.json', root), 'utf8'));
+  assert.equal(antigravity.name, portable.name);
+  assert.equal(cursor.name, portable.name);
+  assert.equal(antigravity.version, portable.version);
+  assert.equal(cursor.version, portable.version);
+  assert.deepEqual(antigravity.skills, ['./plugins/hcmus-course/skills']);
+  assert.equal(cursor.skills, './skills/');
+  assert.equal(cursorMarketplace.plugins[0].name, portable.name);
+  assert.equal(cursorMarketplace.plugins[0].source, './plugins/hcmus-course');
+  await access(new URL(antigravity.logo, root));
 });

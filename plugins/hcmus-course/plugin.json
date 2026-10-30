@@ -1,19 +1,27 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "hcmus-course",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Use HCMUS FIT Moodle Course through a locally installed Course CLI.",
+  "author": { "name": "NgBaoAnn", "url": "https://github.com/NgBaoAnn" },
+  "homepage": "https://github.com/NgBaoAnn/portal-cli",
   "repository": "https://github.com/NgBaoAnn/portal-cli",
+  "license": "UNLICENSED",
   "extensions": {
     "com.openai": {
       "requires_local_executor": true,
       "onboardingSkill": "./skills/setup/SKILL.md",
       "interface": {
         "displayName": "HCMUS Course",
-        "shortDescription": "Read courses and prepare submissions with the Course CLI",
+        "shortDescription": "Study with HCMUS Course",
+        "longDescription": "Use the locally installed HCMUS Course CLI to check deadlines, read assignments, review courses, and prepare Moodle submissions and quizzes with explicit approval for every write.",
         "developerName": "NgBaoAnn",
         "category": "Productivity",
         "capabilities": ["Read", "Write"],
+        "websiteURL": "https://github.com/NgBaoAnn/portal-cli",
+        "brandColor": "#0B5F8C",
+        "composerIcon": "./assets/icon.png",
+        "logo": "./assets/logo.png",
         "defaultPrompt": [
           "Hãy cho tôi biết còn deadline nào tôi chưa làm",
           "Xem đề bài tập và giúp tôi chuẩn bị bài nộp"

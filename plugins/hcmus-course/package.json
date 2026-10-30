@@ -1,0 +1,11 @@
+{
+  "name": "hcmus-course-agent-plugin",
+  "version": "0.3.0",
+  "private": true,
+  "description": "HCMUS Course skills for OpenCode, Claude Code, and Codex",
+  "license": "UNLICENSED",
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "files": ["src", "skills"],
+  "dependencies": { "@opencode/plugin": "2.1.4" }
+}
