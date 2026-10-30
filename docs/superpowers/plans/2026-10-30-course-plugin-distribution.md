@@ -4,9 +4,9 @@
 
 **Goal:** Distribute the existing CLI-backed skills from GitHub to local Codex, Claude Code, and OpenCode users, and prepare reviewable packages for official directories.
 
-**Architecture:** The four skills remain canonical under `plugins/hcmus-course/skills`. Codex reads the portable root manifest and existing marketplace, Claude Code reads a compatibility manifest and its own marketplace, and OpenCode 2 reads a static HTTP skill catalog. The CLI stays on npm and is installed through the setup skill.
+**Architecture:** The four skills remain canonical under `plugins/hcmus-course/skills`. Codex reads the portable root manifest and existing marketplace, Claude Code reads a compatibility manifest and its own marketplace, and OpenCode 2 installs the plugin subdirectory as a Git-backed TypeScript package and registers those same skills. The CLI stays on npm and is installed through the setup skill.
 
-**Tech Stack:** JSON manifests, Markdown skills, SVG icons, Node.js test runner, Claude/Codex/OpenCode CLIs.
+**Tech Stack:** JSON manifests, Markdown skills, TypeScript OpenCode adapter, SVG icons, Node.js test runner, Claude/Codex/OpenCode CLIs.
 
 **Spec:** `docs/superpowers/specs/2026-10-30-course-plugin-distribution-design.md`
 
@@ -20,7 +20,7 @@
 ## Review Focus
 
 - Codex and Claude manifest names or versions diverge: test their equality.
-- OpenCode catalog references a missing skill or stale version: test paths and version equality.
+- OpenCode package references a missing skill or stale version: test paths and version equality.
 - The ZIP contains repo files or credentials: inspect its complete file list.
 - Claude manifest validates but the marketplace source cannot install: test both validation and an isolated install when the CLI permits it.
 - A host-neutral skill loses explicit approval on write: run baseline and updated agent scenarios for Assignment, Quiz, and another write.
@@ -51,15 +51,15 @@
 - [ ] **Step 4: Assemble and inspect a Codex submission ZIP** with only the portable manifest, skills, README, and assets.
 - [ ] **Step 5: Run the full `npm test` and commit.**
 
-### Task 3: OpenCode catalog and release guidance
+### Task 3: OpenCode Git package and release guidance
 
-**Files:** Create `plugins/hcmus-course/skills/index.json`; modify `packages/cli/src/plugin.test.ts`, root `README.md`, and optionally `plugins/hcmus-course/README.md` for concise install instructions.
+**Files:** Create `plugins/hcmus-course/package.json`, `plugins/hcmus-course/src/index.ts`, and `.opencode/INSTALL.md`; modify `packages/cli/src/plugin.test.ts`, root `README.md`, and optionally `plugins/hcmus-course/README.md` for concise install instructions.
 
-**Interfaces:** Each catalog entry maps to one existing skill directory with a real `SKILL.md`, and versions match the plugin release.
+**Interfaces:** OpenCode 2 loads the plugin from `github:NgBaoAnn/portal-cli#main::path:plugins/hcmus-course`; its TypeScript entry registers every existing `SKILL.md`, and package and manifest versions match.
 
-- [ ] **Step 1: Extend `plugin.test.ts`** to assert exact skill entries, paths, and versions; run RED.
-- [ ] **Step 2: Add the catalog and OpenCode 2 GitHub raw URL guidance** plus OpenCode 1 copy fallback; run GREEN.
-- [ ] **Step 3: Verify the HTTP catalog against local files** and exercise OpenCode skill loading if feasible.
+- [ ] **Step 1: Extend `plugin.test.ts`** to assert package entry, skill paths, and versions; run RED.
+- [ ] **Step 2: Add the Git-backed OpenCode 2 plugin and `.opencode/INSTALL.md`** plus older-version copy fallback; run GREEN.
+- [ ] **Step 3: Exercise OpenCode plugin loading** in an isolated configuration if feasible.
 - [ ] **Step 4: Run final tests, `git diff --check`, and inspect the ZIP again; commit and push.**
 
 ## Public-directory handoff

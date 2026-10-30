@@ -14,7 +14,7 @@ Students should install the skills and the published `hcmus-course-cli` from Git
 
 ## Approaches
 
-1. **GitHub catalogs first, then official directories (chosen):** Codex installs the current portable package from the GitHub marketplace; Claude Code gets its own manifest and marketplace file; OpenCode 2 reads the four skills from a GitHub-hosted HTTP catalog. This reaches local agents without a new service, while official submissions follow each vendor's review process.
+1. **GitHub installation first, then official directories (chosen):** Codex and Claude Code install through GitHub marketplaces; OpenCode 2 installs a Git-backed plugin package from the same repository. This follows the installation pattern in Superpowers' README while keeping all four skills in one directory. Official submissions follow each vendor's review process.
 2. **Official directories only:** fewer installation instructions after approval, but developer identity, review, and web-only execution constraints delay use.
 3. **Build an MCP backend:** could serve cloud chat, but adds hosted infrastructure and conflicts with the project's skills-plus-CLI direction.
 
@@ -22,7 +22,7 @@ Students should install the skills and the published `hcmus-course-cli` from Git
 
 - Add `.claude-plugin/marketplace.json` at the repository root, pointing to `./plugins/hcmus-course`. Add `plugins/hcmus-course/.claude-plugin/plugin.json` with the same stable plugin name, display metadata, and version as the portable manifest.
 - Make the existing skills host-neutral where they describe PTY usage. The rules still require preview, chat approval, verification, and no blind retry for writes.
-- Add `plugins/hcmus-course/skills/index.json` for OpenCode 2's HTTP catalog. Each entry lists its `SKILL.md`, and the catalog version changes when skill content changes. Document the global local-skill copy fallback for OpenCode 1.
+- Add a small TypeScript OpenCode 2 plugin entry in `plugins/hcmus-course` that registers the existing skills through `ctx.skill.transform`. Its `package.json` supports GitHub `::path:` installation. Document a local skill-copy fallback for older OpenCode versions.
 - Add concise cross-platform install and update instructions to the repo README. The plugin setup skill checks the published npm package before installing it.
 - Complete Codex public-listing metadata and add square code-native icon assets. Build a ZIP containing only the plugin root for the OpenAI submission portal. Prepare a review checklist for the owner, including verified developer identity and local desktop test.
 - Document Anthropic's paid-plan directory submission and local-only limitation. The GitHub marketplace can be installed immediately; directory approval remains a separate external step.
@@ -31,7 +31,7 @@ Students should install the skills and the published `hcmus-course-cli` from Git
 
 - Validate the Claude plugin and marketplace with the installed `claude` CLI; test an isolated install where possible.
 - Verify Codex can resolve the GitHub marketplace and load all four skills in a fresh local install.
-- Verify the OpenCode catalog paths and load the skills in OpenCode 2, including a no-auth read-only scenario and a write preview that waits for consent.
+- Verify OpenCode loads the Git-backed package and registers all four skills, including a no-auth read-only scenario and a write preview that waits for consent.
 - Run existing CLI tests and check the final ZIP contains no credentials, build output, or unrelated repository files.
 
 ## Remaining owner steps
