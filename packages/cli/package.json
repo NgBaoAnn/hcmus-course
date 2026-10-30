@@ -1,6 +1,6 @@
 {
   "name": "hcmus-course-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Command-line client for HCMUS FIT Moodle Course",
   "license": "UNLICENSED",
   "repository": {
