@@ -4,8 +4,8 @@
   "version": "0.3.0",
   "description": "Use HCMUS FIT Moodle Course through a locally installed Course CLI.",
   "author": { "name": "NgBaoAnn", "url": "https://github.com/NgBaoAnn" },
-  "homepage": "https://github.com/NgBaoAnn/portal-cli",
-  "repository": "https://github.com/NgBaoAnn/portal-cli",
+  "homepage": "https://github.com/NgBaoAnn/hcmus-course",
+  "repository": "https://github.com/NgBaoAnn/hcmus-course",
   "license": "UNLICENSED",
   "extensions": {
     "com.openai": {
@@ -18,7 +18,7 @@
         "developerName": "NgBaoAnn",
         "category": "Productivity",
         "capabilities": ["Read", "Write"],
-        "websiteURL": "https://github.com/NgBaoAnn/portal-cli",
+        "websiteURL": "https://github.com/NgBaoAnn/hcmus-course",
         "brandColor": "#0B5F8C",
         "composerIcon": "./assets/icon.png",
         "logo": "./assets/logo.png",

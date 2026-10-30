@@ -22,16 +22,16 @@ course auth login
 Trong Claude Code, chạy:
 
 ```text
-/plugin marketplace add NgBaoAnn/portal-cli
+/plugin marketplace add NgBaoAnn/hcmus-course
 /plugin install hcmus-course@hcmus-course-marketplace
 ```
 
-Hoặc dùng terminal: `claude plugin marketplace add NgBaoAnn/portal-cli`, rồi
+Hoặc dùng terminal: `claude plugin marketplace add NgBaoAnn/hcmus-course`, rồi
 `claude plugin install hcmus-course@hcmus-course-marketplace`.
 
 ### Codex
 
-Trong Codex CLI, chạy `codex plugin marketplace add NgBaoAnn/portal-cli`, rồi mở
+Trong Codex CLI, chạy `codex plugin marketplace add NgBaoAnn/hcmus-course`, rồi mở
 `/plugins` để chọn **HCMUS Course** từ marketplace `hcmus-course-local`. Trong Codex
 desktop, thêm cùng GitHub marketplace trong Plugins Directory rồi cài plugin.
 Plugin cần local executor để chạy `course`.
@@ -41,7 +41,7 @@ Plugin cần local executor để chạy `course`.
 Chạy:
 
 ```sh
-opencode plugin add 'github:NgBaoAnn/portal-cli#main::path:plugins/hcmus-course'
+opencode plugin add 'github:NgBaoAnn/hcmus-course#main::path:plugins/hcmus-course'
 ```
 
 Khởi động lại OpenCode và dùng skill `setup` để kiểm tra CLI. Hướng dẫn cài, cập
@@ -52,7 +52,7 @@ nhật và cách nạp skills thủ công cho bản cũ nằm tại [.opencode/I
 Antigravity CLI/App cài plugin trực tiếp từ GitHub:
 
 ```sh
-agy plugin install https://github.com/NgBaoAnn/portal-cli
+agy plugin install https://github.com/NgBaoAnn/hcmus-course
 agy plugin list
 ```
 
@@ -65,7 +65,7 @@ Cài lại bằng lệnh `agy plugin install` khi có bản mới. Plugin dùng 
 Copilot CLI đọc được marketplace Claude đã có trong repo:
 
 ```sh
-copilot plugin marketplace add NgBaoAnn/portal-cli
+copilot plugin marketplace add NgBaoAnn/hcmus-course
 copilot plugin install hcmus-course@hcmus-course-marketplace
 ```
 
@@ -74,8 +74,8 @@ copilot plugin install hcmus-course@hcmus-course-marketplace
 Cài bốn skill cho tài khoản máy bằng bộ cài Agent Skills. Chọn đúng agent:
 
 ```sh
-npx skills add https://github.com/NgBaoAnn/portal-cli/tree/main/plugins/hcmus-course -g -a cursor --skill '*' -y
-npx skills add https://github.com/NgBaoAnn/portal-cli/tree/main/plugins/hcmus-course -g -a gemini-cli --skill '*' -y
+npx skills add https://github.com/NgBaoAnn/hcmus-course/tree/main/plugins/hcmus-course -g -a cursor --skill '*' -y
+npx skills add https://github.com/NgBaoAnn/hcmus-course/tree/main/plugins/hcmus-course -g -a gemini-cli --skill '*' -y
 ```
 
 Chỉ chạy dòng ứng với agent đang dùng. Cursor còn có manifest

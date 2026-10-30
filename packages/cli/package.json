@@ -5,11 +5,11 @@
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/NgBaoAnn/portal-cli.git",
+    "url": "git+https://github.com/NgBaoAnn/hcmus-course.git",
     "directory": "packages/cli"
   },
-  "homepage": "https://github.com/NgBaoAnn/portal-cli#readme",
-  "bugs": "https://github.com/NgBaoAnn/portal-cli/issues",
+  "homepage": "https://github.com/NgBaoAnn/hcmus-course#readme",
+  "bugs": "https://github.com/NgBaoAnn/hcmus-course/issues",
   "keywords": ["hcmus", "moodle", "course", "cli"],
   "publishConfig": {
     "access": "public",

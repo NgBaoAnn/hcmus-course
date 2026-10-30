@@ -4,8 +4,8 @@
   "version": "0.3.0",
   "description": "Use HCMUS FIT Moodle through the local Course CLI.",
   "author": { "name": "NgBaoAnn" },
-  "homepage": "https://github.com/NgBaoAnn/portal-cli",
-  "repository": "https://github.com/NgBaoAnn/portal-cli",
+  "homepage": "https://github.com/NgBaoAnn/hcmus-course",
+  "repository": "https://github.com/NgBaoAnn/hcmus-course",
   "license": "UNLICENSED",
   "logo": "./assets/logo.png",
   "skills": "./skills/"

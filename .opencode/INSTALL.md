@@ -7,7 +7,7 @@ It does not bundle or run a Moodle server.
 ## Install
 
 ```sh
-opencode plugin add 'github:NgBaoAnn/portal-cli#main::path:plugins/hcmus-course'
+opencode plugin add 'github:NgBaoAnn/hcmus-course#main::path:plugins/hcmus-course'
 ```
 
 Restart OpenCode. Ask it to use the `setup` skill, or install the CLI yourself:

@@ -24,7 +24,7 @@ Suggested listing:
   assignment content, prepare submissions, and work through quizzes. Moodle
   writes require a concrete preview and the student's approval in chat. The
   plugin runs only in a local agent session with the CLI installed.
-- Website: `https://github.com/NgBaoAnn/portal-cli`
+- Website: `https://github.com/NgBaoAnn/hcmus-course`
 - Category: Productivity
 
 The OpenAI developer portal needs a verified developer identity and a ZIP upload.

@@ -17,4 +17,4 @@ nhập mật khẩu hoặc token vào CLI hay chat. Chạy `course auth logout` 
 token đã lưu trên máy.
 
 Chạy `course --help` để xem toàn bộ lệnh. Tài liệu sử dụng, giới hạn API và
-plugin Codex nằm trong [README của dự án](https://github.com/NgBaoAnn/portal-cli#readme).
+plugin Codex nằm trong [README của dự án](https://github.com/NgBaoAnn/hcmus-course#readme).
