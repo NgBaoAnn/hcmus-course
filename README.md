@@ -24,6 +24,23 @@ Trong chat Codex có thể hỏi trực tiếp: “Còn deadline nào tôi chưa
 để tra dữ liệu; với thao tác ghi, agent chuẩn bị nội dung, trình bày bản xem trước
 và chờ bạn duyệt trong chat trước khi xác nhận lệnh.
 
+### Chế độ ghi cho agent
+
+Lệnh đọc tự trả JSON khi stdout không phải terminal. Với lệnh ghi, agent truyền
+đủ ID, file và tùy chọn rồi thêm cờ ẩn `--agent`, ví dụ
+`course assignment submit 39794 report.pdf --agent`. Lệnh vẫn cần PTY và chờ
+`yes`; không có cách tự bỏ qua xác nhận. Stdout phát JSON theo từng dòng, có
+`schema: 1`, `event`, `operation`: `preview` → `confirmation_required` →
+`result` hoặc `error` (có `code: cancelled` nếu từ chối). Agent đưa bản xem trước vào chat, chờ bạn duyệt, rồi gửi
+`yes` vào đúng tiến trình. Trong PTY có thể thấy cả ký tự agent vừa nhập; chỉ các
+dòng JSON có `schema: 1` là sự kiện của CLI.
+
+Quiz còn phát `question` với nội dung và lựa chọn, `input_required` khi chờ câu
+trả lời/điều hướng, `answer_saved` sau khi Moodle xác nhận câu đã lưu, và
+`summary` trước lần xác nhận nộp cuối. Lệnh `quiz submit --agent` có hai giai
+đoạn: `read_summary` rồi `submit`; chỉ xác nhận `submit` sau khi bạn xem summary.
+Không dùng `--agent` thì toàn bộ TUI và lệnh cũ hoạt động như trước.
+
 Nếu chỉ muốn nạp skills thủ công cho Codex hoặc agent hỗ trợ Agent Skills, có thể
 chép chúng vào `~/.agents/skills/`. Từ thư mục gốc repo, chạy:
 

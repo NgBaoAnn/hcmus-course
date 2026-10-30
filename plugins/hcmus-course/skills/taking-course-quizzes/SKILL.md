@@ -20,9 +20,9 @@ If `course` is unavailable or unauthenticated, follow the plugin's [setup skill]
 | Find attempts | `course quiz attempts <quiz-id>` | Quiz ID |
 | Read safe attempt status | `course quiz status <attempt-id>` | Attempt ID |
 | Review finished attempt | `course quiz review <attempt-id>` | Attempt ID |
-| Start new attempt | `course quiz start <quiz-id>` | Quiz ID |
-| Answer current attempt | `course quiz resume <attempt-id>` | Attempt ID |
-| Finish attempt | `course quiz submit <attempt-id>` | Attempt ID |
+| Start new attempt | `course quiz start <quiz-id> --agent` | Quiz ID |
+| Answer current attempt | `course quiz resume <attempt-id> --agent` | Attempt ID |
+| Finish attempt | `course quiz submit <attempt-id> --agent` | Attempt ID |
 
 The `id=` in a Moodle `mod/quiz/view.php` link is a course-module ID, not necessarily the Quiz ID. Resolve IDs through `quiz list` and `quiz attempts`. Read commands are safe for reporting; `start`, `resume`, and `submit` require an interactive terminal and confirmation. Never use them to satisfy a read-only request.
 
@@ -30,7 +30,9 @@ The `id=` in a Moodle `mod/quiz/view.php` link is a course-module ID, not necess
 
 `quiz status` intentionally returns `endtime: null` and `answeredQuestions: null` for an active attempt: Moodle's more detailed APIs may process an expired attempt. Null means **unknown**, not unlimited time or zero answers. For an exact live timer or question state under a read-only request, direct the student to the Moodle website. Leaving the CLI does not pause Moodle's timer.
 
-When the student explicitly wants to continue, `quiz resume <attempt-id>` accepts answers in an interactive terminal. An agent can enter an answer through its PTY after the student supplies or approves that specific answer in chat; the student need not type in the terminal. A changed answer is saved immediately, so obtain approval **before** entering it. Enter keeps the existing answer; `:clear` deletes it; `:quit` exits the question. The page menu has `next`, `back` when allowed, `submit`, and `quit`. Sequential navigation may prevent going back. Save acknowledgement is checked with Moodle; do not assume a typed answer was recorded after a timeout. `quiz submit <attempt-id>` has **two** `yes` prompts: the first permits reading a fresh summary and may process expiry, so only start this after the student requests submission; the second finalizes the attempt. The agent may answer the first through its PTY, then must show the fresh summary in chat and wait for explicit approval before sending the second `yes` to that same PTY process. After an uncertain finish, check status and the website; do not blindly retry or claim completion.
+For Codex, use `--agent` on write commands with explicit IDs in a local PTY. Parse only JSON lines with `schema: 1`; PTY input may echo. A `preview` followed by `confirmation_required` asks for approval. `start` and `resume` stages can open or alter a live attempt; show the preview in chat before sending `yes`. During an attempt, a `question` event contains slot, type, text and choices. `input_required` asks for the answer or navigation. Propose a specific answer in chat and obtain the student's approval **before** sending it to the PTY, because changes save immediately. Wait for `answer_saved` with the same slot before advancing or claiming the answer was saved. Enter keeps the existing answer; `:clear` deletes it; `:quit` exits the question. The page menu accepts `next`, `back` when allowed, `submit`, or `quit`; if sequential navigation prevents going back, explain that consequence and get approval before sending `next`.
+
+`quiz submit <attempt-id> --agent` has two approval stages. Start it only after the student asks to submit: stage `read_summary` permits a fresh summary read and may process expiry. The CLI then emits `summary` and a second `preview`/`confirmation_required` at stage `submit`. Show the summary and final preview in chat, then wait for explicit approval before sending the second `yes` to the same PTY. `result.result.state: finished` confirms completion; `paused` means saved answers remain but the attempt was not submitted, including when final approval was declined. `error.code: cancelled` means an earlier confirmation was declined. On another `error`, `uncertain`, or conflict, check `quiz status` and the website; never blindly retry. Password-protected quizzes require the website in agent mode. Without `--agent`, the human TUI remains available.
 
 ## Supported scope
 

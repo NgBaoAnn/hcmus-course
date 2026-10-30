@@ -64,7 +64,9 @@ test('forum create escapes text, reply sends post ID, and subscription uses actu
     mod_forum_set_subscription_state: { id: 55, subscribed: true },
     mod_forum_toggle_favourite_state: { id: 55, favourited: true },
   });
-  await assert.rejects(forumWrite(token, 'create', 8, { subject: 'Hi', body: '<script>bad</script>', check: async () => false }), /Đã hủy/);
+  await assert.rejects(forumWrite(token, 'create', 8, { subject: 'Hi', body: '<script>bad</script>', check: async preview => {
+    assert.match(preview, /<script>bad<\/script>/); return false;
+  } }), /Đã hủy/);
   assert.ok(!calls.some(call => call.method === 'mod_forum_add_discussion'));
   assert.equal((await forumWrite(token, 'create', 8, { subject: 'Hi', body: '<script>bad</script>', check: async () => true })).id, 55);
   assert.match(calls.find(call => call.method === 'mod_forum_add_discussion')?.params.get('message') ?? '', /&lt;script&gt;/);
@@ -93,7 +95,7 @@ test('messages, notifications, todos and favourites use expected APIs without ex
   });
   assert.equal((await inbox(token)).conversations.length, 1);
   assert.equal((await conversation(token, 4)).messages[0].messageText, 'Hello');
-  await assert.rejects(sendMessage(token, 8, 'Hello', async () => false), /Đã hủy/);
+  await assert.rejects(sendMessage(token, 8, 'Hello', async preview => { assert.match(preview, /Nội dung:\nHello/); return false; }), /Đã hủy/);
   assert.ok(!calls.some(call => call.method === 'core_message_send_instant_messages'));
   assert.equal((await sendMessage(token, 8, 'Hello', async () => true)).messageid, 9);
   assert.equal(calls.find(call => call.method === 'core_message_send_instant_messages')?.params.get('messages[0][touserid]'), '8');

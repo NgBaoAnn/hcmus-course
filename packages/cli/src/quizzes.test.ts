@@ -108,6 +108,34 @@ test('all read commands remain read-only and expose incomplete timing/count hone
   assert.equal((await reviewQuiz(token, 8)).questions[0].text, 'Allowed feedback');
   assert.equal(writes(f).length, 0);
 });
+test('quiz agent events identify a question and a server-verified saved answer', async t => {
+  await setup(t);
+  const events: { event: string; data: Record<string, unknown> }[] = [];
+  const result = await resumeQuiz(token, 8, {
+    ask: answer('yes', 'my answer', 'quit'),
+    onEvent: (event, data) => events.push({ event, data }),
+  });
+  assert.equal(result.state, 'paused');
+  const question = events.find(item => item.event === 'question');
+  assert.equal(question?.data.slot, 1);
+  assert.equal(question?.data.type, 'shortanswer');
+  assert.match(String(question?.data.text), /Question 1/);
+  assert.equal(events.find(item => item.event === 'answer_saved')?.data.slot, 1);
+});
+
+test('quiz agent events distinguish summary reading from final submission approval', async t => {
+  const f = await setup(t);
+  const stages: string[] = [];
+  const events: { event: string; data: Record<string, unknown> }[] = [];
+  const result = await submitQuiz(token, 8, {
+    confirm: async (_preview, stage) => { stages.push(stage ?? 'unknown'); return stage !== 'submit'; },
+    onEvent: (event, data) => events.push({ event, data }),
+  });
+  assert.equal(result.state, 'paused');
+  assert.deepEqual(stages, ['read_summary', 'submit']);
+  assert.equal(events.find(item => item.event === 'summary')?.data.attemptid, 8);
+  assert.equal(f.calls.some(call => call.name === 'mod_quiz_process_attempt'), false);
+});
 test('read review respects API denial and never falls back to active data', async t => {
   const f = await setup(t); f.attempt.state = 'finished';
   f.hooks.mod_quiz_get_attempt_review = () => ({ exception: 'error', errorcode: 'noreview' });

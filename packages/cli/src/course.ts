@@ -16,11 +16,18 @@ import { materials, downloadMaterial, markCompletion, forumWrite, inbox, convers
 import { chooseId, courseChoices, assignmentChoices, quizChoices, attemptChoices, forumChoices, discussionChoices,
   postChoices, conversationChoices, recipientChoices, notificationChoices, materialChoices, activityChoices,
   favouriteCourseChoices } from './choices.js';
+import { AgentSession } from './agent.js';
 
 const configDir = join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'course-cli-spike');
 const authFile = join(configDir, 'auth.json');
 const pendingLoginFile = join(configDir, 'pending-login.json');
 const print = (value: unknown) => show(value, { json: true });
+let activeAgent: AgentSession | undefined;
+const agentSession = (enabled: unknown, operation: string) => {
+  if (enabled !== true) return undefined;
+  activeAgent = new AgentSession(operation);
+  return activeAgent;
+};
 const printCards = (title: string, cards: { title: string; lines: string[] }[]) => console.log(formatCards(title, cards));
 const field = (label: string, value: string | number | null | undefined) => `${label}: ${value ?? 'Không rõ'}`;
 const reportWarnings = (warnings: { message?: string; warningcode?: string }[] = []) => {
@@ -199,27 +206,38 @@ async function main() {
     const options = {
       ...(readOnly ? { json: { type: 'boolean' as const } } : {}),
       ...(action === 'list' ? { course: { type: 'string' as const } } : {}),
+      ...(!readOnly ? { agent: { type: 'boolean' as const } } : {}),
     };
     const { values, positionals } = parseArgs({ args: args.slice(2), options, allowPositionals: true });
     const json = readOnly && jsonOutput(values.json);
+    const agent = readOnly ? undefined : agentSession(values.agent, `quiz.${action}`);
     if (positionals.length > (action === 'list' ? 0 : 1)) throw new Error('Đối số quiz không hợp lệ.');
     const quizId = ['view', 'attempts', 'start'].includes(action);
     const id = action === 'list' ? undefined : await chooseId(positionals[0], quizId ? 'Quiz ID' : 'Attempt ID', async () => {
       const token = await readToken();
       return quizId ? quizChoices(token) : attemptChoices(token, action);
-    }, json);
+    }, json || !!agent);
     const courseId = values.course === undefined ? undefined : requireId(String(values.course), 'Course ID');
     const token = await readToken();
+    const quizAgentOptions = agent ? {
+      confirm: (preview: string, stage?: string) => agent.confirm(preview, stage),
+      ask: (prompt: string, options?: { secret?: boolean }) => agent.ask(prompt, options),
+      onEvent: (event: 'question' | 'answer_saved' | 'summary', data: Record<string, unknown>) => agent.emit(event, data),
+    } : undefined;
     const load = async () => action === 'list' ? await listQuizzes(token, courseId)
       : action === 'view' ? await viewQuiz(token, id)
       : action === 'attempts' ? await quizAttempts(token, id)
       : action === 'status' ? await quizStatus(token, id)
-      : action === 'start' ? await startQuiz(token, id)
-      : action === 'resume' ? await resumeQuiz(token, id)
-      : action === 'submit' ? await submitQuiz(token, id) : await reviewQuiz(token, id);
+      : action === 'start' ? await startQuiz(token, id, quizAgentOptions)
+      : action === 'resume' ? await resumeQuiz(token, id, quizAgentOptions)
+      : action === 'submit' ? await submitQuiz(token, id, quizAgentOptions) : await reviewQuiz(token, id);
     const result = readOnly && !json ? await withProgress('Đang đọc quiz từ Moodle…', load) : await load();
-    reportWarnings(result.warnings);
-    if (json) show(result, { json: true });
+    if (!agent) reportWarnings(result.warnings);
+    if (agent) {
+      agent.result(result);
+      if ('state' in result && ['uncertain', 'conflict', 'unsupported', 'expired', 'abandoned'].includes(result.state)) process.exitCode = 1;
+    }
+    else if (json) show(result, { json: true });
     else if ('quizzes' in result) printCards(`Quiz · ${result.quizzes.length}`, result.quizzes.map(q => ({
       title: `#${q.id} · ${q.name}`,
       lines: [field('Môn', q.course), field('Thời lượng', q.timelimit ? `${q.timelimit} giây` : 'Không giới hạn'),
@@ -265,29 +283,36 @@ async function main() {
       ...(action !== 'submit' ? { json: { type: 'boolean' as const } } : {}),
       ...(action === 'list' ? { course: { type: 'string' as const } } : {}),
       ...(action === 'download' ? { output: { type: 'string' as const } } : {}),
-      ...(action === 'submit' ? { 'text-file': { type: 'string' as const }, draft: { type: 'boolean' as const } } : {}),
+      ...(action === 'submit' ? { 'text-file': { type: 'string' as const }, draft: { type: 'boolean' as const }, agent: { type: 'boolean' as const } } : {}),
     };
     const { values, positionals } = parseArgs({ args: args.slice(2), options, allowPositionals: true });
     const json = action !== 'submit' && jsonOutput(values.json);
+    const agent = action === 'submit' ? agentSession(values.agent, 'assignment.submit') : undefined;
     if (action === 'list' ? positionals.length !== 0 : action !== 'submit' && positionals.length > 1) {
       throw new Error('Đối số assignment không hợp lệ.');
     }
     const id = action === 'list' ? undefined : await chooseId(positionals[0], 'Assignment ID',
-      async () => assignmentChoices(await readToken()), json);
+      async () => assignmentChoices(await readToken()), json || !!agent);
     const courseId = values.course === undefined ? undefined : requireId(String(values.course), 'Course ID');
     const token = await readToken();
     const files = positionals.slice(1);
-    if (action === 'submit' && !files.length && values['text-file'] === undefined && process.stdin.isTTY && process.stdout.isTTY) {
+    if (action === 'submit' && !agent && !files.length && values['text-file'] === undefined && process.stdin.isTTY && process.stdout.isTTY) {
       files.push((await ask('Đường dẫn file cần nộp:')).trim());
     }
     const load = async () => action === 'list' ? await listAssignments(token, courseId)
       : action === 'view' ? await viewAssignment(token, id)
       : action === 'status' ? await assignmentStatus(token, id)
       : action === 'download' ? await downloadAssignment(token, id, typeof values.output === 'string' ? values.output : undefined)
-      : await submitAssignment(token, id, { files, textFile: typeof values['text-file'] === 'string' ? values['text-file'] : undefined, draft: values.draft === true });
+      : await submitAssignment(token, id, { files, textFile: typeof values['text-file'] === 'string' ? values['text-file'] : undefined,
+        draft: values.draft === true, confirm: agent ? (preview => agent.confirm(preview, 'submit')) : undefined });
     const result = action === 'submit' || json ? await load() : await withProgress('Đang đọc bài tập từ Moodle…', load);
-    reportWarnings(result.warnings);
-    if (json) show(result, { json: true });
+    if (!agent) reportWarnings(result.warnings);
+    if (agent) {
+      agent.result('state' in result ? { state: result.state, message: result.message,
+        pendingMembers: result.pendingMembers, warnings: result.warnings, webUrl: result.webUrl } : result);
+      if ('state' in result && (result.state === 'uncertain' || (!values.draft && result.state !== 'submitted'))) process.exitCode = 1;
+    }
+    else if (json) show(result, { json: true });
     else if ('assignments' in result) printCards(`Bài tập · ${result.assignments.length}`, result.assignments.map(a => ({
       title: `#${a.id} · ${a.name}`,
       lines: [field('Môn', `${a.coursename} (${a.courseid})`), `Hạn: ${formatLocalDate(a.duedate)}`,
@@ -329,24 +354,26 @@ async function main() {
       ...(action === 'list' ? { course: { type: 'string' as const } } : {}),
       ...(action === 'discussions' ? { page: { type: 'string' as const } } : {}),
       ...(['create', 'reply'].includes(action) ? { subject: { type: 'string' as const }, 'text-file': { type: 'string' as const } } : {}),
+      ...(!readOnly ? { agent: { type: 'boolean' as const } } : {}),
     } });
     const json = readOnly && jsonOutput(values.json);
+    const agent = readOnly ? undefined : agentSession(values.agent, `forum.${action}`);
     if (positionals.length > (action === 'list' ? 0 : ['subscribe', 'favourite'].includes(action) ? 2 : 1)) throw new Error('Đối số forum không hợp lệ.');
     const id = action === 'list' ? undefined : await chooseId(positionals[0],
       action === 'reply' ? 'Post ID' : ['view', 'subscribe', 'favourite'].includes(action) ? 'Discussion ID' : 'Forum ID', async () => {
         const token = await readToken();
         return action === 'reply' ? postChoices(token) : ['view', 'subscribe', 'favourite'].includes(action)
           ? discussionChoices(token) : forumChoices(token);
-      }, json);
+      }, json || !!agent);
     const courseId = values.course === undefined ? undefined : requireId(String(values.course), 'Course ID');
     const page = values.page === undefined ? 1 : requireId(String(values.page), 'Số trang');
     const token = await readToken();
-    const mode = ['subscribe', 'favourite'].includes(action) && positionals[1] === undefined && process.stdin.isTTY && process.stdout.isTTY
+    const mode = ['subscribe', 'favourite'].includes(action) && positionals[1] === undefined && !agent && process.stdin.isTTY && process.stdout.isTTY
       ? (await ask('Nhập on để bật hoặc off để tắt:')).trim().toLowerCase() : positionals[1];
     if (['subscribe', 'favourite'].includes(action) && !['on', 'off'].includes(mode)) throw new Error('Chọn on hoặc off.');
-    const subject = ['create', 'reply'].includes(action) && values.subject === undefined && process.stdin.isTTY && process.stdout.isTTY
+    const subject = ['create', 'reply'].includes(action) && values.subject === undefined && !agent && process.stdin.isTTY && process.stdout.isTTY
       ? (await ask('Tiêu đề:')).trim() : values.subject;
-    const textFile = ['create', 'reply'].includes(action) && values['text-file'] === undefined && process.stdin.isTTY && process.stdout.isTTY
+    const textFile = ['create', 'reply'].includes(action) && values['text-file'] === undefined && !agent && process.stdin.isTTY && process.stdout.isTTY
       ? (await ask('Đường dẫn file nội dung:')).trim() : values['text-file'];
     const load = async () => action === 'list' ? await forums(token, courseId)
       : action === 'discussions' ? await forumDiscussions(token, id, page)
@@ -355,10 +382,12 @@ async function main() {
         subject: typeof subject === 'string' ? subject : undefined,
         body: typeof textFile === 'string' ? await readFile(textFile, 'utf8') : undefined,
         enabled: mode === 'on' ? true : mode === 'off' ? false : undefined,
+        check: agent ? preview => agent.confirm(preview) : undefined,
       });
     const result = !readOnly || json ? await load() : await withProgress('Đang đọc diễn đàn Moodle…', load);
-    reportWarnings(result.warnings);
-    if (json) show(result, { json: true });
+    if (!agent) reportWarnings(result.warnings);
+    if (agent) agent.result(result);
+    else if (json) show(result, { json: true });
     else if ('forums' in result) printCards(`Diễn đàn · ${result.forums.length}`, result.forums.map(forum => ({
       title: `#${forum.id} · ${forum.name}`, lines: [`Môn: ${forum.course} · Loại: ${forum.type}`,
         `Chủ đề: ${forum.numdiscussions ?? 'Không rõ'}`, forum.introText, forum.webUrl],
@@ -396,36 +425,39 @@ async function main() {
     else printCards('Đã tải tài liệu', result.downloaded.map(path => ({ title: path, lines: [] })));
   } else if (args[0] === 'completion') {
     if (!['done', 'undo'].includes(args[1])) throw new Error('Dùng: course completion done|undo <module-id> --course <course-id>');
-    const { values, positionals } = parseArgs({ args: args.slice(2), allowPositionals: true, options: { course: { type: 'string' } } });
+    const { values, positionals } = parseArgs({ args: args.slice(2), allowPositionals: true, options: { course: { type: 'string' }, agent: { type: 'boolean' } } });
     if (positionals.length > 1) throw new Error('Đối số completion không hợp lệ.');
-    const courseId = await chooseId(values.course, 'Course ID', async () => courseChoices(await readToken()));
+    const agent = agentSession(values.agent, `completion.${args[1]}`);
+    const courseId = await chooseId(values.course, 'Course ID', async () => courseChoices(await readToken()), !!agent);
     const token = await readToken();
-    const moduleId = await chooseId(positionals[0], 'Module ID', () => activityChoices(token, courseId));
-    const result = await markCompletion(token, courseId, moduleId, args[1] === 'done');
-    reportWarnings(result.warnings);
-    printCards('Tiến độ', [{ title: result.activity.name, lines: [`Trạng thái: ${result.state === 'completed' ? 'Đã hoàn thành' : 'Chưa hoàn thành'}`, result.activity.webUrl] }]);
+    const moduleId = await chooseId(positionals[0], 'Module ID', () => activityChoices(token, courseId), !!agent);
+    const result = await markCompletion(token, courseId, moduleId, args[1] === 'done', agent ? preview => agent.confirm(preview) : undefined);
+    if (agent) agent.result(result);
+    else { reportWarnings(result.warnings); printCards('Tiến độ', [{ title: result.activity.name, lines: [`Trạng thái: ${result.state === 'completed' ? 'Đã hoàn thành' : 'Chưa hoàn thành'}`, result.activity.webUrl] }]); }
   } else if (args[0] === 'messages') {
     const action = args[1];
     if (!['inbox', 'view', 'send'].includes(action)) throw new Error('Lệnh messages không hợp lệ.');
     const { values, positionals } = parseArgs({ args: args.slice(2), allowPositionals: true, options: {
-      json: { type: 'boolean' }, limit: { type: 'string' }, 'text-file': { type: 'string' },
+      json: { type: 'boolean' }, limit: { type: 'string' }, 'text-file': { type: 'string' }, agent: { type: 'boolean' },
     } });
     if (positionals.length > (action === 'inbox' ? 0 : 1)) throw new Error('Đối số messages không hợp lệ.');
-    if (action === 'send' && (values.json || values.limit) || action !== 'send' && values['text-file']) throw new Error('Tùy chọn messages không hợp lệ.');
+    if (action === 'send' && (values.json || values.limit) || action !== 'send' && (values['text-file'] || values.agent)) throw new Error('Tùy chọn messages không hợp lệ.');
     const json = action !== 'send' && jsonOutput(values.json);
+    const agent = action === 'send' ? agentSession(values.agent, 'messages.send') : undefined;
     const id = action === 'inbox' ? undefined : await chooseId(positionals[0], action === 'view' ? 'Conversation ID' : 'User ID', async () => {
       const token = await readToken();
       return action === 'view' ? conversationChoices(token) : recipientChoices(token);
-    }, json);
+    }, json || !!agent);
     const token = await readToken();
     const limit = values.limit === undefined ? undefined : requireId(String(values.limit), 'Giới hạn');
-    const textFile = action === 'send' && values['text-file'] === undefined && process.stdin.isTTY && process.stdout.isTTY
+    const textFile = action === 'send' && values['text-file'] === undefined && !agent && process.stdin.isTTY && process.stdout.isTTY
       ? (await ask('Đường dẫn file tin nhắn:')).trim() : values['text-file'];
     const result = action === 'inbox' ? await inbox(token, limit)
       : action === 'view' ? await conversation(token, id!, limit)
-      : await sendMessage(token, id!, typeof textFile === 'string' ? await readFile(textFile, 'utf8') : '');
-    reportWarnings(result.warnings);
-    if (json) show(result, { json: true });
+      : await sendMessage(token, id!, typeof textFile === 'string' ? await readFile(textFile, 'utf8') : '', agent ? preview => agent.confirm(preview) : undefined);
+    if (!agent) reportWarnings(result.warnings);
+    if (agent) agent.result(result);
+    else if (json) show(result, { json: true });
     else if ('conversations' in result) printCards(`Hội thoại · ${result.conversations.length}`, result.conversations.map(item => ({
       title: `#${item.id} · ${item.name || item.members?.map(member => member.fullname).join(', ') || 'Hội thoại'}`,
       lines: [`Chưa đọc: ${item.unreadcount ?? 0}`, ...(item.members ?? []).map(member => `${member.fullname} · User ID ${member.id}`)],
@@ -435,10 +467,13 @@ async function main() {
     })));
     else printCards('Tin nhắn', [{ title: 'Đã gửi', lines: [`Message ID: ${result.messageid}`] }]);
   } else if (args[0] === 'notifications' && args[1] === 'read') {
-    if (args.length > 3) throw new Error('Dùng: course notifications read <notification-id>');
-    const id = await chooseId(args[2], 'Notification ID', async () => notificationChoices(await readToken()));
-    const result = await markNotification(await readToken(), id);
-    printCards('Thông báo', [{ title: `#${result.notificationid}`, lines: ['Trạng thái: Đã đọc'] }]);
+    const { values, positionals } = parseArgs({ args: args.slice(2), allowPositionals: true, options: { agent: { type: 'boolean' } } });
+    if (positionals.length > 1) throw new Error('Dùng: course notifications read <notification-id>');
+    const agent = agentSession(values.agent, 'notifications.read');
+    const id = await chooseId(positionals[0], 'Notification ID', async () => notificationChoices(await readToken()), !!agent);
+    const result = await markNotification(await readToken(), id, agent ? preview => agent.confirm(preview) : undefined);
+    if (agent) agent.result(result);
+    else printCards('Thông báo', [{ title: `#${result.notificationid}`, lines: ['Trạng thái: Đã đọc'] }]);
   } else if (args[0] === 'todo') {
     const { values, positionals } = parseArgs({ args: args.slice(1), options: { days: { type: 'string' }, json: { type: 'boolean' } }, allowPositionals: true });
     if (positionals.length) throw new Error('Đối số todo không hợp lệ.');
@@ -454,25 +489,28 @@ async function main() {
   } else if (args[0] === 'favourites') {
     const action = args[1] ?? 'list';
     if (!['list', 'add', 'remove'].includes(action)) throw new Error('Lệnh favourites không hợp lệ.');
-    const { values, positionals } = parseArgs({ args: args.slice(2), options: action === 'list' ? { json: { type: 'boolean' } } : {}, allowPositionals: true });
+    const { values, positionals } = parseArgs({ args: args.slice(2), options: action === 'list' ? { json: { type: 'boolean' } } : { agent: { type: 'boolean' } }, allowPositionals: true });
     if (positionals.length > (action === 'list' ? 0 : 1)) throw new Error('Đối số favourites không hợp lệ.');
+    const agent = action === 'list' ? undefined : agentSession(values.agent, `favourites.${action}`);
     const id = action === 'list' ? undefined : await chooseId(positionals[0], 'Course ID',
-      async () => favouriteCourseChoices(await readToken(), action as 'add' | 'remove'));
+      async () => favouriteCourseChoices(await readToken(), action as 'add' | 'remove'), !!agent);
     const token = await readToken();
-    const result = action === 'list' ? await favouriteCourses(token) : await setFavouriteCourse(token, id!, action === 'add');
-    if (action === 'list' && jsonOutput(values.json)) show(result, { json: true });
+    const result = action === 'list' ? await favouriteCourses(token) : await setFavouriteCourse(token, id!, action === 'add', agent ? preview => agent.confirm(preview) : undefined);
+    if (agent) agent.result(result);
+    else if (action === 'list' && jsonOutput(values.json)) show(result, { json: true });
     else if ('courses' in result) printCards(`Môn yêu thích · ${result.courses.length}`, result.courses.map(item => ({ title: `#${item.id} · ${item.fullname}`, lines: [item.webUrl] })));
     else printCards('Môn yêu thích', [{ title: `Môn #${result.courseid}`, lines: [`Trạng thái: ${result.state === 'favourite' ? 'Yêu thích' : 'Bình thường'}`] }]);
   } else if (args[0] === 'event') {
     if (args[1] !== 'create') throw new Error('Lệnh event không hợp lệ.');
-    const { values, positionals } = parseArgs({ args: args.slice(2), options: { name: { type: 'string' }, at: { type: 'string' }, minutes: { type: 'string' } }, allowPositionals: true });
+    const { values, positionals } = parseArgs({ args: args.slice(2), options: { name: { type: 'string' }, at: { type: 'string' }, minutes: { type: 'string' }, agent: { type: 'boolean' } }, allowPositionals: true });
     if (positionals.length) throw new Error('Đối số event không hợp lệ.');
-    const name = values.name ?? (process.stdin.isTTY && process.stdout.isTTY ? await ask('Tên sự kiện:') : '');
-    const at = values.at ?? (process.stdin.isTTY && process.stdout.isTTY ? await ask('Thời gian ISO 8601 có múi giờ (ví dụ 2026-11-01T09:00+07:00):') : '');
-    const minutes = values.minutes ?? (process.stdin.isTTY && process.stdout.isTTY ? await ask('Thời lượng (phút):') : '');
-    const result = await createPersonalEvent(await readToken(), name, at, minutes);
-    reportWarnings(result.warnings);
-    printCards('Lịch cá nhân', [{ title: 'Đã tạo sự kiện', lines: [`Event ID: ${result.id}`, result.webUrl] }]);
+    const agent = agentSession(values.agent, 'event.create');
+    const name = values.name ?? (!agent && process.stdin.isTTY && process.stdout.isTTY ? await ask('Tên sự kiện:') : '');
+    const at = values.at ?? (!agent && process.stdin.isTTY && process.stdout.isTTY ? await ask('Thời gian ISO 8601 có múi giờ (ví dụ 2026-11-01T09:00+07:00):') : '');
+    const minutes = values.minutes ?? (!agent && process.stdin.isTTY && process.stdout.isTTY ? await ask('Thời lượng (phút):') : '');
+    const result = await createPersonalEvent(await readToken(), name, at, minutes, agent ? preview => agent.confirm(preview) : undefined);
+    if (agent) agent.result(result);
+    else { reportWarnings(result.warnings); printCards('Lịch cá nhân', [{ title: 'Đã tạo sự kiện', lines: [`Event ID: ${result.id}`, result.webUrl] }]); }
   } else if (args[0] === 'calendar' && args[1] === 'export') {
     const { values, positionals } = parseArgs({ args: args.slice(2), options: { output: { type: 'string' }, days: { type: 'string' } }, allowPositionals: true });
     if (positionals.length) throw new Error('Dùng: course calendar export --output <file.ics> [--days <số>]');
@@ -643,6 +681,7 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(error.code ? `Lỗi hệ thống: ${error.code}` : error.message);
+  if (activeAgent) activeAgent.error(error);
+  else console.error(error.code ? `Lỗi hệ thống: ${error.code}` : error.message);
   process.exitCode = 1;
 });
