@@ -55,7 +55,7 @@
 
 **Files:** Create `plugins/hcmus-course/package.json`, `plugins/hcmus-course/src/index.ts`, and `.opencode/INSTALL.md`; modify `packages/cli/src/plugin.test.ts`, root `README.md`, and optionally `plugins/hcmus-course/README.md` for concise install instructions.
 
-**Interfaces:** OpenCode 2 loads the plugin from `github:NgBaoAnn/portal-cli#main::path:plugins/hcmus-course`; its TypeScript entry registers every existing `SKILL.md`, and package and manifest versions match.
+**Interfaces:** OpenCode 2 loads the plugin from `github:NgBaoAnn/hcmus-course#main::path:plugins/hcmus-course`; its TypeScript entry registers every existing `SKILL.md`, and package and manifest versions match.
 
 - [ ] **Step 1: Extend `plugin.test.ts`** to assert package entry, skill paths, and versions; run RED.
 - [ ] **Step 2: Add the Git-backed OpenCode 2 plugin and `.opencode/INSTALL.md`** plus older-version copy fallback; run GREEN.

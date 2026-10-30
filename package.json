@@ -1,5 +1,5 @@
 {
-  "name": "portal-cli",
+  "name": "hcmus-course",
   "private": true,
   "workspaces": ["packages/cli"],
   "scripts": {
