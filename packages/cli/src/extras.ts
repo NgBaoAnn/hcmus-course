@@ -12,6 +12,7 @@ const text = (value: string | undefined, label: string) => {
   if (!value?.trim() || value.length > 100_000) throw new Error(`${label} phải có nội dung và không vượt 100000 ký tự.`);
   return value.trim();
 };
+const previewText = (value: string, check?: Check) => check ? value : value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const html = (value: string) => `<p>${value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/\n/g, '<br>')}</p>`;
 
 export async function materials(token: string, courseId: number | string) {
@@ -60,7 +61,7 @@ export async function forumWrite(token: string, action: 'create' | 'reply' | 'su
       const access = await api<{ status: boolean }>(token, 'mod_forum_can_add_discussion', { forumid: id });
       if (!access.status) throw new Error('Bạn không có quyền tạo chủ đề trong diễn đàn này.');
     }
-    await approved(`${action === 'create' ? 'Tạo chủ đề trong forum' : 'Trả lời bài viết'} #${id}: ${subject}?`, options.check);
+    await approved(`${action === 'create' ? 'Tạo chủ đề trong forum' : 'Trả lời bài viết'} #${id}: ${previewText(subject, options.check)}?\nNội dung:\n${previewText(body, options.check)}`, options.check);
     const result = await api<{ discussionid?: number; postid?: number; post?: { discussionid?: number }; warnings?: MoodleWarning[] }>(token,
       action === 'create' ? 'mod_forum_add_discussion' : 'mod_forum_add_discussion_post',
       action === 'create' ? { forumid: id, subject, message: html(body) } : { postid: id, subject, message: html(body), messageformat: 1 });
@@ -105,7 +106,7 @@ export async function sendMessage(token: string, userId: number | string, body: 
   const id = requireId(String(userId), 'User ID');
   const message = text(body, 'Tin nhắn');
   if (id === await verifiedUser(token)) throw new Error('Không gửi tin nhắn cho chính mình.');
-  await approved(`Gửi tin nhắn cho Moodle User ID #${id}?`, check);
+  await approved(`Gửi tin nhắn cho Moodle User ID #${id}?\nNội dung:\n${previewText(message, check)}`, check);
   const result = await api<{ msgid: number; errormessage?: string }[]>(token, 'core_message_send_instant_messages',
     { 'messages[0][touserid]': id, 'messages[0][text]': message, 'messages[0][textformat]': 0 });
   if (!Array.isArray(result) || result[0]?.msgid <= 0) throw new Error(`Moodle chưa xác nhận gửi tin nhắn: ${render(result?.[0]?.errormessage) || 'không rõ lý do'}`);

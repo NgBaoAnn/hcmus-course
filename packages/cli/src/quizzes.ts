@@ -7,7 +7,11 @@ import { listCourses, type MoodleWarning } from './student.js';
 
 type Id = number | string | undefined;
 type Params = Record<string, string | number | boolean>;
-interface Options { confirm?: (preview: string) => Promise<boolean>; ask?: (prompt: string, options?: { secret?: boolean }) => Promise<string> }
+interface Options {
+  confirm?: (preview: string, stage?: string) => Promise<boolean>;
+  ask?: (prompt: string, options?: { secret?: boolean }) => Promise<string>;
+  onEvent?: (event: 'question' | 'answer_saved' | 'summary', data: Record<string, unknown>) => void;
+}
 interface Quiz {
   id: number; course: number; coursemodule: number; name: string; intro?: string; preferredbehaviour?: string;
   timelimit?: number; timeopen?: number; timeclose?: number; attempts?: number; navmethod?: string;
@@ -39,8 +43,8 @@ function checked<T extends { warnings?: MoodleWarning[] }>(value: T): T {
   if (value.warnings?.length) throw new Error(`Moodle chưa xác nhận đầy đủ: ${value.warnings.map(w => render(w.message)).join('; ')}`);
   return value;
 }
-async function consent(confirm: (preview: string) => Promise<boolean>, preview: string) {
-  try { if (await confirm(preview)) return; } catch { /* EOF cancels. */ }
+async function consent(confirm: NonNullable<Options['confirm']>, preview: string, stage = 'confirm') {
+  try { if (await confirm(preview, stage)) return; } catch { /* EOF cancels. */ }
   throw new Error('Đã hủy; không gửi thao tác quiz.');
 }
 async function ask(prompt: string, options?: { secret?: boolean }) {
@@ -267,7 +271,7 @@ function promptFor(q: Question, form: Form, attemptid: number, endtime?: number,
   return `Trang ${q.page + 1}, câu ${q.questionnumber} (${q.type}), ${render(q.status)}\n${form.text}\n${options}\n${form.media ? `Có hình/âm thanh/công thức không thể hiện đầy đủ; xem ${attemptUrl(attemptid)} hoặc website quiz.\n` : ''}${endtime ? `Hạn: ${date(endtime)}; còn khoảng ${Math.max(0, Math.floor(endtime - serverNow(timing!)))} giây.\n` : ''}Nhập câu trả lời${form.fields.length > 1 ? ' (các control ngăn bằng |; checkbox chọn số cách nhau bằng dấu phẩy)' : ''}; Enter giữ nguyên; :clear xóa; :quit thoát:`;
 }
 
-async function interact(token: string, quiz: Quiz, initial: Attempt, preflight: Params, prompt: NonNullable<Options['ask']>): Promise<QuizResult> {
+async function interact(token: string, quiz: Quiz, initial: Attempt, preflight: Params, prompt: NonNullable<Options['ask']>, options: Options): Promise<QuizResult> {
   const id = initial.id;
   const timing: ResponseTiming = {};
   let page = initial.currentpage;
@@ -294,9 +298,14 @@ async function interact(token: string, quiz: Quiz, initial: Attempt, preflight: 
       for (const question of current.questions) {
         const form = forms.get(question.slot)!;
         if (question.type === 'description') {
-          console.error(`Trang ${page + 1}, ${form.text}${form.media ? `\nCó tài nguyên không thể hiện đầy đủ: ${attemptUrl(id)}` : ''}`);
+          if (options.onEvent) options.onEvent('question', { attemptid: id, slot: question.slot, questionNumber: question.questionnumber,
+            type: question.type, text: form.text, media: form.media, fields: [] });
+          else console.error(`Trang ${page + 1}, ${form.text}${form.media ? `\nCó tài nguyên không thể hiện đầy đủ: ${attemptUrl(id)}` : ''}`);
           continue;
         }
+        options.onEvent?.('question', { attemptid: id, slot: question.slot, questionNumber: question.questionnumber,
+          type: question.type, text: form.text, media: form.media,
+          fields: form.fields.map(field => ({ kind: field.kind, stem: field.stem, choices: field.choices.map(choice => ({ ...choice })) })) });
         let input: string;
         try { input = await prompt(promptFor(question, form, id, clock.endtime, timing)); }
         catch { return result('paused', id, 'Đã thoát; chỉ các câu được server xác nhận còn ở Moodle. Không tự nộp.'); }
@@ -337,14 +346,16 @@ async function interact(token: string, quiz: Quiz, initial: Attempt, preflight: 
           return result('conflict', id, 'Moodle chưa xác nhận đúng câu vừa lưu (có thể sequence-check xung đột). Dừng, không gửi lại.');
         }
         forms.set(question.slot, saved);
-        console.error(`Câu ${render(question.questionnumber)} đã được server xác nhận lưu.`);
+        options.onEvent?.('answer_saved', { attemptid: id, slot: question.slot, questionNumber: question.questionnumber });
+        if (!options.onEvent) console.error(`Câu ${render(question.questionnumber)} đã được server xác nhận lưu.`);
       }
       let navigation: string;
       const warning = quiz.navmethod === 'seq' && current.nextpage !== -1 ? ' — không thể quay lại sau khi sang trang' : '';
       try { navigation = (await prompt(`Trang ${page + 1}${warning}. next: trang kế; ${quiz.navmethod === 'free' && page > 0 ? 'back: trang trước; ' : ''}submit: nộp; quit: thoát:`)).trim(); }
       catch { return result('paused', id, 'Đã thoát; không tự nộp.'); }
       if (navigation === 'quit' || navigation === '') return result('paused', id, `Đã dừng. Tiếp tục quiz resume ${id}; nộp: quiz submit ${id}.`);
-      if (navigation === 'submit') return submitQuiz(token, id, { ask: prompt, confirm: async preview => (await prompt(`${preview}\nNhập yes để xác nhận:`)).trim().toLowerCase() === 'yes' });
+      if (navigation === 'submit') return submitQuiz(token, id, { ...options, ask: prompt,
+        confirm: options.confirm ?? (async preview => (await prompt(`${preview}\nNhập yes để xác nhận:`)).trim().toLowerCase() === 'yes') });
       const next = navigation === 'next' ? current.nextpage : navigation === 'back' && quiz.navmethod === 'free' ? page - 1 : -1;
       if (next < 0) return result('paused', id, `Không thể đi tới trang đó. Chưa nộp; dùng quiz resume ${id} hoặc quiz submit ${id}.`);
       clock = await remaining();
@@ -396,7 +407,7 @@ export async function startQuiz(token: string, id: Id, options: Options = {}): P
   const course = courses.find(c => c.id === quiz.course);
   if (!course) throw new Error('Không xác minh được môn học của quiz.');
   const preview = `${render(info.fullname)} (${info.userid})\n${render(course.fullname)} / ${render(quiz.name)} (Quiz ID ${quiz.id})\n${render(quiz.intro)}\nĐã dùng ${attempts.attempts.length}/${quiz.attempts || 'không giới hạn'} lượt. Thời lượng ${quiz.timelimit ?? 'không rõ'} giây; đóng: ${date(quiz.timeclose)}.\nQuy tắc hết giờ: ${quiz.overduehandling}; grace period: ${quiz.graceperiod ?? 0} giây.\n${access.accessrules.map(render).join('\n')}\nCâu trả lời sẽ lưu ngay sau mỗi lần nhập. ${expiryNotice}\nBắt đầu sẽ tiêu thụ một lượt. ${urlOf(quiz)}`;
-  await consent(options.confirm ?? terminalConfirm, preview);
+  await consent(options.confirm ?? terminalConfirm, preview, 'start');
   const prompt = options.ask ?? ask;
   const preflight = await password(access, prompt);
   const freshQuiz = await quizById(token, quiz.id, timing);
@@ -423,7 +434,7 @@ export async function startQuiz(token: string, id: Id, options: Options = {}): P
   if (!response.attempt || !Number.isSafeInteger(response.attempt.id) || response.attempt.id <= 0 || response.attempt.quiz !== quiz.id || response.attempt.userid !== info.userid || response.attempt.state !== 'inprogress') {
     throw new Error(`Moodle không tạo lượt hợp lệ; không thử lại. Xem quiz attempts ${quiz.id}.`);
   }
-  return interact(token, quiz, response.attempt, preflight, prompt);
+  return interact(token, quiz, response.attempt, preflight, prompt, options);
 }
 
 export async function resumeQuiz(token: string, id: Id, options: Options = {}): Promise<QuizResult> {
@@ -433,10 +444,10 @@ export async function resumeQuiz(token: string, id: Id, options: Options = {}): 
   const access = await api<Access>(token, 'mod_quiz_get_quiz_access_information', { quizid: found.quiz.id });
   validateAccess(found.quiz, access);
   const prompt = options.ask ?? ask;
-  await consent(async preview => (await prompt(`${preview}\nNhập yes để xác nhận:`)).trim().toLowerCase() === 'yes',
-    `Tiếp tục ${render(found.quiz.name)}, Attempt ID ${found.attempt.id}. ${expiryNotice}`);
+  await consent(options.confirm ?? (async preview => (await prompt(`${preview}\nNhập yes để xác nhận:`)).trim().toLowerCase() === 'yes'),
+    `Tiếp tục ${render(found.quiz.name)}, Attempt ID ${found.attempt.id}. ${expiryNotice}`, 'resume');
   const preflight = await password(access, prompt);
-  return interact(token, found.quiz, found.attempt, preflight, prompt);
+  return interact(token, found.quiz, found.attempt, preflight, prompt, options);
 }
 
 export async function submitQuiz(token: string, id: Id, options: Options = {}): Promise<QuizResult> {
@@ -445,7 +456,7 @@ export async function submitQuiz(token: string, id: Id, options: Options = {}): 
   const { quiz, attempt } = found;
   if (!['inprogress', 'overdue'].includes(attempt.state)) return result(attempt.state, attempt.id, `Moodle ghi nhận ${attempt.state}; không gửi nộp lần nữa.`);
   const confirm = options.confirm ?? terminalConfirm;
-  await consent(confirm, `${render(quiz.name)}, Attempt ID ${attempt.id}. Đọc summary mới trước nộp. ${expiryNotice}`);
+  await consent(confirm, `${render(quiz.name)}, Attempt ID ${attempt.id}. Đọc summary mới trước nộp. ${expiryNotice}`, 'read_summary');
   const access = checked(await api<Access>(token, 'mod_quiz_get_quiz_access_information', { quizid: quiz.id }));
   validateAccess(quiz, access);
   const preflight = await password(access, options.ask ?? ask);
@@ -463,8 +474,9 @@ export async function submitQuiz(token: string, id: Id, options: Options = {}): 
     return result('uncertain', attempt.id, `Không đọc được summary (có thể đã hết giờ). Chạy quiz status ${attempt.id}; chưa gửi nộp.`);
   }
   const unAnswered = summary.questions.filter(q => q.stateclass === 'notyetanswered').map(q => q.questionnumber);
+  options.onEvent?.('summary', { attemptid: attempt.id, totalUnanswered: summary.totalunanswered ?? null, unansweredQuestions: unAnswered });
   const preview = `${render(quiz.name)}, Attempt ID ${attempt.id}. Chưa trả lời: ${summary.totalunanswered ?? 'không xác định đầy đủ'}${unAnswered.length ? `; câu ${unAnswered.map(render).join(', ')}` : ''}.\nSau nộp không thể sửa. Nộp toàn bộ bài?`;
-  try { await consent(confirm, preview); }
+  try { await consent(confirm, preview, 'submit'); }
   catch { return result('paused', attempt.id, 'Đã hủy nộp; câu đã lưu vẫn ở Moodle.'); }
   const fresh = await readSummary();
   if (signature(fresh) !== signature(summary)) return result('conflict', attempt.id, 'Summary thay đổi sau xác nhận; không nộp. Chạy lại quiz submit.');

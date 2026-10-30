@@ -1,9 +1,56 @@
 # Course
 
-Monorepo npm workspaces gồm hai package:
+Repo gồm CLI TypeScript tại `packages/cli` và plugin Codex tại `plugins/hcmus-course`.
+Plugin chỉ chứa skills hướng dẫn agent dùng lệnh `course`; CLI được cài riêng.
 
-- `packages/cli`: CLI TypeScript hiện có, lệnh `course`.
-- `packages/mcp`: chỗ dành cho MCP server sẽ phát triển sau; chưa có server chạy.
+## Plugin Codex cho agent
+
+Plugin có bốn skill tại `plugins/hcmus-course/skills/`: `setup` để cài và đăng nhập,
+`using-course-cli`
+cho lệnh đọc và xác thực, `submitting-course-assignments` cho nộp Assignment,
+và `taking-course-quizzes` cho làm Quiz. Chúng là tài liệu hướng dẫn agent,
+không thay đổi hành vi của lệnh `course`.
+
+Trong Codex desktop, thêm repo này làm marketplace cục bộ rồi cài plugin
+**HCMUS Course**. Từ thư mục gốc repo, chạy `codex plugin marketplace add .`,
+khởi động lại app, mở Plugins Directory, chọn marketplace **HCMUS Course** rồi cài.
+Repo khai báo plugin trong `plugins/hcmus-course/plugin.json` và marketplace trong
+`.agents/plugins/marketplace.json`; plugin cần executor cục bộ để chạy `course`.
+Sau khi cài plugin, cài CLI theo mục tiếp theo rồi chạy `course doctor` và
+`course auth login`.
+
+Trong chat Codex có thể hỏi trực tiếp: “Còn deadline nào tôi chưa làm?”,
+“Đọc đề bài tập đó và giúp tôi làm”, hoặc “Nộp bài này giúp tôi”. Agent dùng CLI
+để tra dữ liệu; với thao tác ghi, agent chuẩn bị nội dung, trình bày bản xem trước
+và chờ bạn duyệt trong chat trước khi xác nhận lệnh.
+
+### Chế độ ghi cho agent
+
+Lệnh đọc tự trả JSON khi stdout không phải terminal. Với lệnh ghi, agent truyền
+đủ ID, file và tùy chọn rồi thêm cờ ẩn `--agent`, ví dụ
+`course assignment submit 39794 report.pdf --agent`. Lệnh vẫn cần PTY và chờ
+`yes`; không có cách tự bỏ qua xác nhận. Stdout phát JSON theo từng dòng, có
+`schema: 1`, `event`, `operation`: `preview` → `confirmation_required` →
+`result` hoặc `error` (có `code: cancelled` nếu từ chối). Agent đưa bản xem trước vào chat, chờ bạn duyệt, rồi gửi
+`yes` vào đúng tiến trình. Trong PTY có thể thấy cả ký tự agent vừa nhập; chỉ các
+dòng JSON có `schema: 1` là sự kiện của CLI.
+
+Quiz còn phát `question` với nội dung và lựa chọn, `input_required` khi chờ câu
+trả lời/điều hướng, `answer_saved` sau khi Moodle xác nhận câu đã lưu, và
+`summary` trước lần xác nhận nộp cuối. Lệnh `quiz submit --agent` có hai giai
+đoạn: `read_summary` rồi `submit`; chỉ xác nhận `submit` sau khi bạn xem summary.
+Không dùng `--agent` thì toàn bộ TUI và lệnh cũ hoạt động như trước.
+
+Nếu chỉ muốn nạp skills thủ công cho Codex hoặc agent hỗ trợ Agent Skills, có thể
+chép chúng vào `~/.agents/skills/`. Từ thư mục gốc repo, chạy:
+
+```sh
+mkdir -p ~/.agents/skills
+cp -R plugins/hcmus-course/skills/* ~/.agents/skills/
+```
+
+Mở phiên agent mới sau khi cài để danh sách skill được cập nhật. Khi nâng cấp
+repo, chạy lại lệnh `cp -R` để đồng bộ nội dung mới.
 
 CLI cho sinh viên dùng `https://courses.fit.hcmus.edu.vn`: đọc môn học,
 đề và tài liệu, deadline, lịch, tiến độ, điểm, thông báo, diễn đàn; nộp Moodle
@@ -13,16 +60,24 @@ Microsoft.
 ## Cài và chạy
 
 Cần Node.js **22 trở lên** và trình duyệt mặc định của hệ điều hành cho `auth login`.
+Khi phiên bản đã có trên npm (`npm view hcmus-course-cli version`), cài bằng:
 
 ```sh
-npm install          # biên dịch CLI vào packages/cli/dist/
-cd packages/cli
-npm link             # đăng ký lệnh course trên máy
-cd ../..
+npm install -g hcmus-course-cli
 course --help
 course doctor
 course auth login
 course auth status
+```
+
+Để chạy mã nguồn trong repo trước khi phát hành hoặc khi phát triển CLI:
+
+```sh
+npm ci
+cd packages/cli
+npm link
+cd ../..
+course --help
 ```
 
 Không dùng `npm link` vẫn chạy được từ thư mục dự án:

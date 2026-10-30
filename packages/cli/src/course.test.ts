@@ -19,7 +19,7 @@ async function cliWithDirectory(directory: string, args: string[], preload: stri
     return { stdout: result.stdout, stderr: result.stderr, code: result.code };
   }
 }
-async function cli(t: TestContext, args: string[], responses: Record<string, unknown> = {}, authenticated = false) {
+async function cli(t: TestContext, args: string[], responses: Record<string, unknown> = {}, authenticated = false, humanOutput = false) {
   const directory = await mkdtemp(join(tmpdir(), 'course-cli-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   if (authenticated) {
@@ -27,7 +27,7 @@ async function cli(t: TestContext, args: string[], responses: Record<string, unk
     await writeFile(join(directory, 'course-cli-spike', 'auth.json'), JSON.stringify({ token }), { mode: 0o600 });
   }
   // Only the external network is replaced: argument parsing, token IO and all modules run normally.
-  const preload = `const responses = ${JSON.stringify(responses)};
+  const preload = `${humanOutput ? 'process.stdout.isTTY = true;' : ''} const responses = ${JSON.stringify(responses)};
     globalThis.fetch = async (_url, options) => {
       const name = options?.body instanceof URLSearchParams ? options.body.get('wsfunction') : 'publicConfig';
       if (!(name in responses)) { console.error('UNEXPECTED_API:' + name); throw new Error('Unexpected API'); }
@@ -35,7 +35,7 @@ async function cli(t: TestContext, args: string[], responses: Record<string, unk
     };`;
   try {
     const result = await run(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
-      new URL('./course.js', import.meta.url).pathname, ...args], { env: { ...process.env, XDG_CONFIG_HOME: directory } });
+      new URL('./course.js', import.meta.url).pathname, ...args], { env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' } });
     return { ...result, code: 0 };
   } catch (error) {
     const result = error as Error & { stdout: string; stderr: string; code: number };
@@ -60,6 +60,7 @@ test('CLI help includes auth status and every command group without reading auth
       'calendar export', 'event create', 'progress', 'completion done|undo', 'notifications read',
       'forum create', 'forum reply', 'materials list', 'messages inbox', 'todo', 'favourites']) assert.ok(result.stdout.includes(text), text);
     assert.doesNotMatch(result.stdout, /--json/);
+    assert.doesNotMatch(result.stdout, /--agent/);
   }
 });
 test('new read command routes keep their card output and reject write commands without a terminal', async t => {
@@ -77,7 +78,7 @@ test('new read command routes keep their card output and reject write commands w
     [['todo'], 'Submit'],
     [['favourites', 'list'], 'Algorithms'],
   ] as const) {
-    const result = await cli(t, [...args], responses, true);
+    const result = await cli(t, [...args], responses, true, true);
     assert.equal(result.code, 0, result.stderr);
     assert.match(result.stdout, new RegExp(expected));
   }
@@ -94,6 +95,179 @@ test('new read command routes keep their card output and reject write commands w
     assert.equal(result.code, 1);
     assert.match(result.stderr, /Đã hủy/);
     assert.doesNotMatch(result.stderr, /UNEXPECTED_API/);
+  }
+});
+
+test('agent write mode requires an interactive terminal and emits structured message preview/result', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'course-agent-message-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(join(directory, 'course-cli-spike'));
+  await writeFile(join(directory, 'course-cli-spike', 'auth.json'), JSON.stringify({ token }));
+  const file = join(directory, 'message.txt');
+  await writeFile(file, 'Nội dung cần gửi');
+  const args = ['messages', 'send', '8', '--text-file', file, '--agent'];
+  const refused = await cliWithDirectory(directory, args, '');
+  assert.equal(refused.code, 1);
+  assert.match(refused.stderr, /terminal tương tác/);
+  const preload = `process.stdin.isTTY = true; process.stdout.isTTY = true;
+    globalThis.fetch = async (_url, { body }) => {
+      const name = body.get('wsfunction');
+      if (name === 'core_webservice_get_site_info') return new Response(JSON.stringify({userid: 7}));
+      if (name === 'core_message_send_instant_messages') return new Response(JSON.stringify([{msgid: 91}]));
+      throw new Error('Unexpected ' + name);
+    };`;
+  const child = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
+    new URL('./course.js', import.meta.url).pathname, ...args], {
+    env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' }, input: 'yes\n', encoding: 'utf8', timeout: 5000,
+  });
+  assert.equal(child.status, 0, child.stderr);
+  const events = child.stdout.trim().split('\n').map(line => JSON.parse(line));
+  assert.deepEqual(events.map(event => event.event), ['preview', 'confirmation_required', 'result']);
+  assert.match(events[0].preview, /Nội dung cần gửi/);
+  assert.equal(events[2].result.messageid, 91);
+});
+
+test('human message confirmation shows literal angle-bracket text before sending', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'course-human-message-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(join(directory, 'course-cli-spike'));
+  await writeFile(join(directory, 'course-cli-spike', 'auth.json'), JSON.stringify({ token }));
+  const file = join(directory, 'message.txt');
+  await writeFile(file, 'Use <code>literal</code> tags');
+  const preload = `process.stdin.isTTY = true; process.stdout.isTTY = true;
+    globalThis.fetch = async (_url, { body }) => {
+      const name = body.get('wsfunction');
+      if (name === 'core_webservice_get_site_info') return new Response(JSON.stringify({userid: 7}));
+      throw new Error('Unexpected write ' + name);
+    };`;
+  const child = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
+    new URL('./course.js', import.meta.url).pathname, 'messages', 'send', '8', '--text-file', file], {
+    env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' }, input: 'no\n', encoding: 'utf8', timeout: 5000,
+  });
+  assert.equal(child.status, 1);
+  assert.match(child.stderr, /Use <code>literal<\/code> tags/);
+  assert.doesNotMatch(child.stderr, /Unexpected write/);
+});
+
+test('human forum confirmation shows literal subject and body before posting', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'course-human-forum-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(join(directory, 'course-cli-spike'));
+  await writeFile(join(directory, 'course-cli-spike', 'auth.json'), JSON.stringify({ token }));
+  const file = join(directory, 'post.txt');
+  await writeFile(file, 'Body <code>literal</code>');
+  const preload = `process.stdin.isTTY = true; process.stdout.isTTY = true;
+    globalThis.fetch = async (_url, { body }) => {
+      const name = body.get('wsfunction');
+      if (name === 'mod_forum_can_add_discussion') return new Response(JSON.stringify({status: true}));
+      throw new Error('Unexpected write ' + name);
+    };`;
+  const child = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
+    new URL('./course.js', import.meta.url).pathname, 'forum', 'create', '8', '--subject', 'Topic <code>literal</code>', '--text-file', file], {
+    env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' }, input: 'no\n', encoding: 'utf8', timeout: 5000,
+  });
+  assert.equal(child.status, 1);
+  assert.match(child.stderr, /Topic <code>literal<\/code>/);
+  assert.match(child.stderr, /Body <code>literal<\/code>/);
+  assert.doesNotMatch(child.stderr, /Unexpected write/);
+});
+
+test('forum agent preview contains outgoing text and refusal never creates a post', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'course-agent-forum-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(join(directory, 'course-cli-spike'));
+  await writeFile(join(directory, 'course-cli-spike', 'auth.json'), JSON.stringify({ token }));
+  const file = join(directory, 'forum.txt');
+  await writeFile(file, 'Toàn bộ nội dung bài viết');
+  const preload = `process.stdin.isTTY = true; process.stdout.isTTY = true;
+    globalThis.fetch = async (_url, { body }) => {
+      const name = body.get('wsfunction');
+      if (name === 'mod_forum_can_add_discussion') return new Response(JSON.stringify({status: true}));
+      throw new Error('Unexpected write ' + name);
+    };`;
+  const child = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
+    new URL('./course.js', import.meta.url).pathname, 'forum', 'create', '8', '--subject', 'Tiêu đề', '--text-file', file, '--agent'], {
+    env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' }, input: 'no\n', encoding: 'utf8', timeout: 5000,
+  });
+  assert.equal(child.status, 1);
+  const events = child.stdout.trim().split('\n').map(line => JSON.parse(line));
+  assert.match(events[0].preview, /Toàn bộ nội dung bài viết/);
+  assert.deepEqual(events.map(event => event.event), ['preview', 'confirmation_required', 'error']);
+  assert.doesNotMatch(child.stderr, /Unexpected write/);
+});
+
+test('quiz agent submit labels its first approval as summary reading and cannot finish on refusal', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'course-agent-quiz-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(join(directory, 'course-cli-spike'));
+  await writeFile(join(directory, 'course-cli-spike', 'auth.json'), JSON.stringify({ token }));
+  const preload = `process.stdin.isTTY = true; process.stdout.isTTY = true;
+    globalThis.fetch = async (_url, { body }) => {
+      const name = body.get('wsfunction');
+      if (name === 'mod_quiz_get_quizzes_by_courses') return new Response(JSON.stringify({quizzes: [{id: 6, course: 12, coursemodule: 60, name: 'Quiz'}], warnings: []}));
+      if (name === 'mod_quiz_get_user_attempts') return new Response(JSON.stringify({attempts: [{id: 8, quiz: 6, state: 'inprogress'}], warnings: []}));
+      throw new Error('Unexpected write ' + name);
+    };`;
+  const child = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
+    new URL('./course.js', import.meta.url).pathname, 'quiz', 'submit', '8', '--agent'], {
+    env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' }, input: 'no\n', encoding: 'utf8', timeout: 5000,
+  });
+  assert.equal(child.status, 1);
+  const events = child.stdout.trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(events[0].event, 'preview');
+  assert.equal(events[0].stage, 'read_summary');
+  assert.deepEqual(events.map(event => event.event), ['preview', 'confirmation_required', 'error']);
+  assert.doesNotMatch(child.stderr, /Unexpected write/);
+});
+
+test('assignment agent preview lists replacement files and cancellation does not upload', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'course-agent-assignment-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(join(directory, 'course-cli-spike'));
+  await writeFile(join(directory, 'course-cli-spike', 'auth.json'), JSON.stringify({ token }));
+  const file = join(directory, 'answer.txt');
+  await writeFile(file, 'answer');
+  const preload = `process.stdin.isTTY = true; process.stdout.isTTY = true;
+    const assignment = {id: 4, cmid: 40, name: 'Essay', duedate: 0, cutoffdate: 0, allowsubmissionsfromdate: 0,
+      submissiondrafts: 1, teamsubmission: 0, requireallteammemberssubmit: 0, requiresubmissionstatement: 0,
+      configs: [{plugin: 'file', subtype: 'assignsubmission', name: 'enabled', value: '1'},
+        {plugin: 'file', subtype: 'assignsubmission', name: 'maxfilesubmissions', value: '1'},
+        {plugin: 'file', subtype: 'assignsubmission', name: 'maxsubmissionsizebytes', value: '100'},
+        {plugin: 'file', subtype: 'assignsubmission', name: 'filetypeslist', value: '.txt'}]};
+    globalThis.fetch = async (_url, { body }) => {
+      const name = body.get('wsfunction');
+      if (name === 'core_enrol_get_users_courses') return new Response(JSON.stringify([{id: 12, fullname: 'Algorithms'}]));
+      if (name === 'mod_assign_get_assignments') return new Response(JSON.stringify({courses: [{id: 12, fullname: 'Algorithms', assignments: [assignment]}], warnings: []}));
+      if (name === 'mod_assign_get_submission_status') return new Response(JSON.stringify({lastattempt: {submissionsenabled: true, locked: false,
+        canedit: true, caneditowner: true, cansubmit: true, extensionduedate: 0, usergroups: []}, warnings: []}));
+      if (name === 'core_webservice_get_site_info') return new Response(JSON.stringify({userid: 7, fullname: 'Student'}));
+      throw new Error('Unexpected write ' + name);
+    };`;
+  const child = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
+    new URL('./course.js', import.meta.url).pathname, 'assignment', 'submit', '4', file, '--agent'], {
+    env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' }, input: 'no\n', encoding: 'utf8', timeout: 5000,
+  });
+  assert.equal(child.status, 1, child.stderr);
+  const events = child.stdout.trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(events[0].event, 'preview');
+  assert.match(events[0].preview, /answer.txt/);
+  assert.deepEqual(events.map(event => event.event), ['preview', 'confirmation_required', 'error']);
+  assert.doesNotMatch(child.stderr, /Unexpected write/);
+});
+
+test('every Moodle write group refuses --agent without a PTY before contacting Moodle', async t => {
+  for (const args of [
+    ['assignment', 'submit', '4', 'answer.txt'], ['quiz', 'start', '6'], ['quiz', 'resume', '8'], ['quiz', 'submit', '8'],
+    ['forum', 'create', '8', '--subject', 'Hi', '--text-file', 'post.txt'], ['forum', 'reply', '9', '--subject', 'Re', '--text-file', 'post.txt'],
+    ['forum', 'subscribe', '9', 'on'], ['forum', 'favourite', '9', 'on'],
+    ['messages', 'send', '8', '--text-file', 'message.txt'], ['completion', 'done', '40', '--course', '12'],
+    ['notifications', 'read', '9'], ['favourites', 'add', '12'],
+    ['event', 'create', '--name', 'Study', '--at', '2026-11-01T09:00+07:00', '--minutes', '30'],
+  ]) {
+    const result = await cli(t, [...args, '--agent']);
+    assert.equal(result.code, 1, args.join(' '));
+    assert.match(result.stderr, /terminal tương tác/, args.join(' '));
+    assert.doesNotMatch(result.stderr, /UNEXPECTED_API|Chưa có token/, args.join(' '));
   }
 });
 test('noninteractive list defaults to current year and --all includes older enrolled courses', async t => {
@@ -228,7 +402,7 @@ test('new read commands route through Moodle and render readable cards', async t
     [['notifications'], 'Feedback'], [['forum', 'list', '--course', '12'], 'Q&A'],
     [['forum', 'discussions', '8'], 'Question'], [['forum', 'view', '11'], 'Answer'],
   ] as const) {
-    const result = await cli(t, [...args], responses, true);
+    const result = await cli(t, [...args], responses, true, true);
     assert.equal(result.code, 0, result.stderr);
     assert.match(result.stdout, /COURSE CLI/);
     assert.ok(result.stdout.includes(expected), args.join(' '));
@@ -249,7 +423,7 @@ test('human assignment lists use readable cards and local dates instead of Unix 
     core_webservice_get_site_info: user,
     core_enrol_get_users_courses: courses,
     mod_assign_get_assignments: { courses: [{ id: 12, fullname: 'Algorithms', assignments: [assignment] }], warnings: [] },
-  }, true);
+  }, true, true);
   assert.equal(result.code, 0); assert.equal(result.stderr, '');
   assert.match(result.stdout, /Bài tập/);
   assert.match(result.stdout, /Essay/);
@@ -265,7 +439,7 @@ test('human quiz reviews retain question slots, answers, and the Moodle review l
     mod_quiz_get_quizzes_by_courses: { quizzes: [quiz], warnings: [] },
     mod_quiz_get_user_attempts: { attempts: [attempt], warnings: [] },
     mod_quiz_get_attempt_review: { attempt, questions: [{ slot: 1, html: '<p>Prompt</p>', response: 'A', rightanswer: 'B', status: 'incorrect' }], grade: '5/10', warnings: [] },
-  }, true);
+  }, true, true);
   assert.equal(result.code, 0); assert.equal(result.stderr, '');
   assert.match(result.stdout, /Câu 1/);
   assert.match(result.stdout, /Trạng thái: Chưa đúng/);
@@ -279,7 +453,7 @@ test('human quiz attempt lists retain the Moodle link', async t => {
     mod_quiz_get_quizzes_by_courses: { quizzes: [quiz], warnings: [] },
     mod_quiz_get_user_attempts: { attempts: [{ id: 8, quiz: 6, userid: 7, uniqueid: 91, attempt: 1,
       state: 'inprogress', currentpage: 0, timestart: 1793232000, timemodified: 1793232100, timefinish: 0 }], warnings: [] },
-  }, true);
+  }, true, true);
   assert.equal(result.code, 0); assert.equal(result.stderr, '');
   assert.match(result.stdout, /Lượt #8 · Đang làm/);
   assert.match(result.stdout, /mod\/quiz\/view\.php\?id=60/);
@@ -359,6 +533,25 @@ test('CLI JSON retains IDs, timestamps and structured warnings while diagnostics
   assert.equal(data.assignments[0].webUrl, 'https://courses.fit.hcmus.edu.vn/mod/assign/view.php?id=40');
   assert.deepEqual(data.warnings, [warning]); assert.ok(!result.stdout.includes(token));
 });
+test('noninteractive read commands emit JSON without an explicit flag', async t => {
+  const warning = { warningcode: 'partial', message: 'Incomplete fixture data' };
+  const listed = await cli(t, ['assignment', 'list', '--course', '12'], {
+    mod_assign_get_assignments: { courses: [{ id: 12, assignments: [assignment] }], warnings: [warning] },
+  }, true);
+  assert.equal(listed.code, 0, listed.stderr);
+  assert.equal(JSON.parse(listed.stdout).assignments[0].id, 4);
+  assert.deepEqual(JSON.parse(listed.stdout).warnings, [warning]);
+
+  const deadlinesResult = await cli(t, ['deadlines'], {
+    core_webservice_get_site_info: user,
+    core_enrol_get_users_courses: courses,
+    mod_assign_get_assignments: { courses: [], warnings: [warning] },
+    mod_quiz_get_quizzes_by_courses: { quizzes: [], warnings: [] },
+  }, true);
+  assert.equal(deadlinesResult.code, 0, deadlinesResult.stderr);
+  assert.deepEqual(JSON.parse(deadlinesResult.stdout).deadlines, []);
+  assert.deepEqual(JSON.parse(deadlinesResult.stdout).warnings, [warning]);
+});
 test('deadlines print identical Moodle access warnings once with a count', async t => {
   const warning = { warningcode: '1', message: 'No access rights in module context' };
   const result = await cli(t, ['deadlines'], {
@@ -369,7 +562,7 @@ test('deadlines print identical Moodle access warnings once with a count', async
   }, true);
   assert.equal(result.code, 0, result.stderr);
   assert.equal(result.stderr.trim(), 'Cảnh báo (36): No access rights in module context');
-  assert.match(result.stdout, /30 ngày tới/);
+  assert.equal(JSON.parse(result.stdout).warnings.length, 36);
 });
 test('CLI reports Moodle grade denial on stderr without fabricating grades', async t => {
   const result = await cli(t, ['grades', '--course', '12', '--json'], {
