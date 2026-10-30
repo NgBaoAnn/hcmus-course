@@ -31,7 +31,7 @@ Hoặc dùng terminal: `claude plugin marketplace add NgBaoAnn/portal-cli`, rồ
 ### Codex
 
 Trong Codex CLI, chạy `codex plugin marketplace add NgBaoAnn/portal-cli`, rồi mở
-`/plugins` để chọn **HCMUS Course** từ marketplace **HCMUS Course**. Trong Codex
+`/plugins` để chọn **HCMUS Course** từ marketplace `hcmus-course-local`. Trong Codex
 desktop, thêm cùng GitHub marketplace trong Plugins Directory rồi cài plugin.
 Plugin cần local executor để chạy `course`.
 

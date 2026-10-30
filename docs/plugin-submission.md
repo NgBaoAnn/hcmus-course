@@ -9,7 +9,8 @@ published CLI is `hcmus-course-cli@0.1.0`. Merge the distribution branch into
 
 ## Codex directory package
 
-The release ZIP is generated at `dist/plugin/hcmus-course-0.2.0-codex.zip`.
+From the repository root, run `sh scripts/package-plugin.sh`. It generates the
+release ZIP at `dist/plugin/hcmus-course-0.2.0-codex.zip`.
 It contains only `plugin.json`, the four `skills/*/SKILL.md` files, the plugin
 README, and icon assets. The ZIP contains no credentials, MCP configuration,
 CLI source, or repository metadata. Recreate it after any change to these files.
