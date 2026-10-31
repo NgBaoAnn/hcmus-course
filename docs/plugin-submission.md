@@ -4,14 +4,14 @@
 
 The root [README](../README.md) gives the Claude Code, Codex, OpenCode,
 Antigravity, Cursor, Copilot, and generic Agent Skills install commands. The
-plugin is `hcmus-course` version `0.3.0`; the separately published CLI is
-`hcmus-course-cli@0.1.0`. Merge the distribution branch into
+plugin is `hcmus-course` version `0.3.1`; the separately published CLI is
+`hcmus-course-cli@0.1.3`. Merge the distribution branch into
 `main` before giving the `#main` instructions to other students.
 
 ## Codex directory package
 
 From the repository root, run `sh scripts/package-plugin.sh`. It generates the
-release ZIP at `dist/plugin/hcmus-course-0.3.0-codex.zip`.
+release ZIP at `dist/plugin/hcmus-course-0.3.1-codex.zip`.
 It contains only `plugin.json`, the four `skills/*/SKILL.md` files, the plugin
 README, and icon assets. The ZIP contains no credentials, MCP configuration,
 CLI source, or repository metadata. Recreate it after any change to these files.

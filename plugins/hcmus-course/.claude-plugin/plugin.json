@@ -1,6 +1,6 @@
 {
   "name": "hcmus-course",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Use HCMUS FIT Moodle Course through a locally installed Course CLI.",
   "author": { "name": "NgBaoAnn" },
   "homepage": "https://github.com/NgBaoAnn/hcmus-course",

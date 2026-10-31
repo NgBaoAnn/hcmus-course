@@ -32,7 +32,7 @@ test('GitHub plugin manifests and OpenCode package share one version and skill s
   const claude = JSON.parse(await readFile(new URL('.claude-plugin/plugin.json', pluginRoot), 'utf8'));
   const claudeMarketplace = JSON.parse(await readFile(new URL('.claude-plugin/marketplace.json', root), 'utf8'));
   const opencode = JSON.parse(await readFile(new URL('package.json', pluginRoot), 'utf8'));
-  assert.equal(portable.version, '0.3.0');
+  assert.equal(portable.version, '0.3.1');
   assert.equal(claude.version, portable.version);
   assert.equal(opencode.version, portable.version);
   assert.equal(claude.name, portable.name);

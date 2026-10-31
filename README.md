@@ -81,7 +81,7 @@ Với agent được `npx skills` hỗ trợ, thay `cursor` ở lệnh trên b�
 (ví dụ `windsurf`, `cline`, `continue`, `kimi-cli`) và khởi động phiên mới.
 `-g` cài cho tài khoản máy; bỏ `-g` để chỉ dùng trong dự án hiện tại. Bộ cài
 `skills` yêu cầu Node.js 22.20 trở lên. Mọi agent vẫn cần chạy cục bộ, thấy
-được lệnh `course`, và có PTY giữ phiên nếu muốn thực hiện thao tác ghi.
+được lệnh `course`, và có thể truyền xác nhận qua pipe hoặc phiên tương tác cho thao tác ghi.
 
 **Cập nhật:** Claude Code dùng `claude plugin marketplace update hcmus-course-marketplace`
 rồi kiểm tra bản plugin mới trong `/plugin`;
