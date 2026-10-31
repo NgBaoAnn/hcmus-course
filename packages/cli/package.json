@@ -1,6 +1,6 @@
 {
   "name": "hcmus-course-cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Command-line client for HCMUS FIT Moodle Course",
   "license": "UNLICENSED",
   "repository": {
@@ -10,7 +10,12 @@
   },
   "homepage": "https://github.com/NgBaoAnn/hcmus-course#readme",
   "bugs": "https://github.com/NgBaoAnn/hcmus-course/issues",
-  "keywords": ["hcmus", "moodle", "course", "cli"],
+  "keywords": [
+    "hcmus",
+    "moodle",
+    "course",
+    "cli"
+  ],
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
@@ -19,7 +24,11 @@
   "bin": {
     "course": "dist/course.js"
   },
-  "files": ["dist/*.js", "!dist/*.test.js", "README.md"],
+  "files": [
+    "dist/*.js",
+    "!dist/*.test.js",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "npm run build && node --test dist/*.test.js",
