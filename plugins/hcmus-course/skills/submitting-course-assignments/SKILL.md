@@ -1,6 +1,6 @@
 ---
 name: submitting-course-assignments
-description: Use when a student asks an agent to read, solve, prepare, upload, submit, verify, or troubleshoot a Moodle Assignment through the HCMUS FIT Course CLI.
+description: Use when a student asks an agent to inspect requirements, read, solve, prepare, upload, submit, verify, or troubleshoot a Moodle Assignment through the HCMUS FIT Course CLI, including questions like "yêu cầu bài tập này là gì" or "cần nộp những gì cho đồ án".
 ---
 
 # Submitting Course Assignments
@@ -9,7 +9,61 @@ description: Use when a student asks an agent to read, solve, prepare, upload, s
 
 `course assignment submit` writes to a student's Moodle Assignment. A file argument is the **complete replacement file set**, and an upload or saved draft is not proof of final submission.
 
-If `course` is unavailable or unauthenticated, follow the plugin's [setup skill](../setup/SKILL.md). For “làm bài tập đó và nộp bài”, resolve “đó” from the conversation or ask only if several assignments remain plausible. Read the full prompt and attachments, produce the requested answer as local files or UTF-8 text, and check the artifact against the assignment requirements before starting a submission. Show the student the finished artifact and any limits you could not verify.
+If `course` is unavailable or unauthenticated, follow the plugin's [setup skill](../setup/SKILL.md). When a student asks about assignment requirements or asks to prepare and submit an assignment ("yêu cầu bài tập này là gì", "làm bài tập đó và nộp bài"), **never rely solely on the brief assignment description**. Instructors and TAs frequently publish critical requirements, errata, file naming conventions, and zip packaging structures across prompt attachments, course forums, and section notes. Conduct an **Exhaustive Requirement Discovery** before preparing or submitting any file.
+
+## Exhaustive Requirement Discovery
+
+Before producing deliverables or submitting files, gather the full specification through four complementary sources:
+
+### 1. Assignment Prompt & System Settings
+Run:
+```sh
+course assignment view <assignment-id>
+course assignment status <assignment-id>
+```
+Extract:
+- Exact deadline (`duedate`) and hard cutoff (`cutoffdate`)
+- Submission types allowed: file submissions (`maxfilesubmissions`, `maxsubmissionsizebytes`, `filetypeslist`) and/or online text
+- Prompt text and submission statement requirements
+- Attached prompt files (`introattachments`)
+
+### 2. Prompt Attachments & Rubrics
+If `introattachments` lists any files (PDF, Word, ZIP, rubric):
+```sh
+course assignment download <assignment-id> --output <destination-directory>
+```
+Read the downloaded PDF, markdown, or text files directly. Often the full rubric, test case guidelines, and code skeleton reside only in these attachments.
+
+### 3. Course Forums & TA Announcements (Critical Errata & Naming Rules)
+Instructors and TAs routinely post clarification threads, sample inputs/outputs, and strict file/folder naming rules on the course forums:
+```sh
+course forum list --course <course-id>
+```
+For all relevant forums (especially "Hỏi đáp", "Thông báo bài tập", "Thảo luận Lab"):
+```sh
+course forum discussions <forum-id>
+```
+Look for discussions mentioning the assignment name or lab number (e.g., "Lab 1", "Đồ án giữa kỳ"). If found, read the full thread with:
+```sh
+course forum view <discussion-id>
+```
+Note any overrides: e.g., "MSSV_HoTen.zip", "không nộp thư mục bin/obj", "được nộp muộn thêm 1 ngày", or bug fixes in test cases.
+
+### 4. Section Context & Supplemental Notes
+Check the section where this assignment is placed for supplementary notes, FAQs, or teacher guidelines:
+```sh
+course view <course-id>
+```
+Read the relevant section summary and module descriptions for any caveats.
+
+### 5. Present the Consolidated Checklist
+Present a concise, structured checklist to the student covering:
+- **Core functional requirements** (from prompt and attachment)
+- **Packaging & Naming conventions** (e.g., `23120190_23120202.zip` with root structure)
+- **Allowed file types & constraints**
+- **Deadline, cutoff, and grace period rules** (incorporating any forum notes)
+
+---
 
 ## Quick reference
 
