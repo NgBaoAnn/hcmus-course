@@ -16,7 +16,7 @@ test('skills-only local plugin points at this repository and requires local exec
   for (const expected of ['.claude-plugin', '.cursor-plugin', 'README.md', 'assets', 'package.json', 'plugin.json', 'skills', 'src']) {
     assert.ok(files.includes(expected), `Missing plugin file: ${expected}`);
   }
-  for (const skill of ['setup', 'using-course-cli', 'submitting-course-assignments', 'taking-course-quizzes']) {
+  for (const skill of ['setup', 'using-course-cli', 'submitting-course-assignments', 'taking-course-quizzes', 'inspecting-course-updates']) {
     await access(new URL(`skills/${skill}/SKILL.md`, pluginRoot));
   }
   assert.equal(plugin.extensions?.['com.openai']?.onboardingSkill, './skills/setup/SKILL.md');
@@ -41,7 +41,7 @@ test('GitHub plugin manifests and OpenCode package share one version and skill s
   assert.equal(opencode.exports['.'], './src/index.ts');
   assert.equal(opencode.type, 'module');
   const code = await readFile(new URL('src/index.ts', pluginRoot), 'utf8');
-  for (const skill of ['setup', 'using-course-cli', 'submitting-course-assignments', 'taking-course-quizzes']) {
+  for (const skill of ['setup', 'using-course-cli', 'submitting-course-assignments', 'taking-course-quizzes', 'inspecting-course-updates']) {
     assert.match(code, new RegExp(skill));
   }
   const ui = portable.extensions['com.openai'].interface;

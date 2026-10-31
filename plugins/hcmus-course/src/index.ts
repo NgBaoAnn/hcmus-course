@@ -7,6 +7,7 @@ const skillDirectories = [
   'using-course-cli',
   'submitting-course-assignments',
   'taking-course-quizzes',
+  'inspecting-course-updates',
 ] as const;
 
 export default Plugin.define({

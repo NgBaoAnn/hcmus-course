@@ -1,7 +1,7 @@
 # Install HCMUS Course in OpenCode
 
 OpenCode 2 can install the skills as a Git-backed plugin. The plugin is a small
-TypeScript adapter that registers the four skills in `plugins/hcmus-course/skills`.
+TypeScript adapter that registers the five skills in `plugins/hcmus-course/skills`.
 It does not bundle or run a Moodle server.
 
 ## Install
@@ -31,6 +31,6 @@ restart OpenCode. Update the CLI separately with `npm update -g hcmus-course-cli
 ## Older OpenCode versions
 
 If your OpenCode version does not support Git package plugins, clone this repo
-and copy the four directories from `plugins/hcmus-course/skills` into
+and copy the five directories from `plugins/hcmus-course/skills` into
 `~/.agents/skills/`. Restart OpenCode after copying, and repeat after a skill
 update. See the [root README](../README.md) for the copy command.

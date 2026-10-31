@@ -50,7 +50,7 @@ agy plugin list
 ```
 
 Cài lại bằng lệnh `agy plugin install` khi có bản mới. Plugin dùng manifest
-`.antigravity-plugin/plugin.json` ở gốc repo và cùng bốn skill ở
+`.antigravity-plugin/plugin.json` ở gốc repo và cùng năm skill ở
 `plugins/hcmus-course/skills/`.
 
 ### GitHub Copilot CLI
@@ -64,7 +64,7 @@ copilot plugin install hcmus-course@hcmus-course-marketplace
 
 ### Cursor và Gemini CLI
 
-Cài bốn skill cho tài khoản máy bằng bộ cài Agent Skills. Chọn đúng agent:
+Cài năm skill cho tài khoản máy bằng bộ cài Agent Skills. Chọn đúng agent:
 
 ```sh
 npx skills add https://github.com/NgBaoAnn/hcmus-course/tree/main/plugins/hcmus-course -g -a cursor --skill '*' -y
@@ -96,9 +96,10 @@ hiện chưa được liệt kê ở đó.
 
 ### Skills và thao tác ghi
 
-Plugin có bốn skill tại `plugins/hcmus-course/skills/`: `setup` để cài và đăng nhập,
+Plugin có năm skill tại `plugins/hcmus-course/skills/`: `setup` để cài và đăng nhập,
 `using-course-cli` cho lệnh đọc và xác thực, `submitting-course-assignments` cho
-nộp Assignment, và `taking-course-quizzes` cho làm Quiz. Chúng là tài liệu hướng
+nộp Assignment và kiểm tra chéo requirement, `taking-course-quizzes` cho làm Quiz,
+và `inspecting-course-updates` cho quét toàn diện thông báo, diễn đàn và tin tức môn học. Chúng là tài liệu hướng
 dẫn agent, không thay đổi hành vi của lệnh `course`.
 
 Trong chat agent có thể hỏi trực tiếp: “Còn deadline nào tôi chưa làm?”,
