@@ -157,7 +157,8 @@ export async function submitAssignment(token: string, id: InputId, options: Subm
   const paths = options.files ?? [];
   if (!paths.length && options.textFile === undefined) fail('Cần file hoặc --text-file để lưu bài.');
   if (paths.length && !enabled.has('file') || options.textFile !== undefined && !enabled.has('onlinetext')) fail('Plugin yêu cầu chưa bật.');
-  if (a.requiresubmissionstatement && (!a.submissionstatement || !a.submissiondrafts)) fail('Không thể xác minh/truyền xác nhận submission statement qua API này.');
+  // shortcut: when submissiondrafts=0, Moodle auto-submits via save_submission and skips the statement modal — statement is shown in preview for user confirmation instead
+  if (a.requiresubmissionstatement && !a.submissionstatement) fail('Không lấy được nội dung submission statement từ API.');
   const current = submission(before, a);
   const oldFiles = filesOf(current);
   const oldText = textOf(current);
