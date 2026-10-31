@@ -7,8 +7,8 @@ GitHub Copilot CLI và các agent hỗ trợ Agent Skills dùng lệnh `course`;
 ## Cài plugin cho agent
 
 Plugin cần agent chạy **cục bộ** trên máy có Node.js 22 trở lên và có quyền gọi
-CLI. Sau khi cài plugin, hãy yêu cầu agent “Thiết lập HCMUS Course”. Cách cài CLI,
-đăng nhập và tra lệnh nằm trong [hướng dẫn CLI](packages/cli/README.md).
+CLI. Sau khi cài plugin, hãy yêu cầu agent “Thiết lập HCMUS Course”. 
+Cách cài CLI, đăng nhập và tra lệnh nằm trong [hướng dẫn CLI](packages/cli/README.md).
 
 ### Claude Code
 
@@ -24,10 +24,17 @@ Hoặc dùng terminal: `claude plugin marketplace add NgBaoAnn/hcmus-course`, r�
 
 ### Codex
 
-Trong Codex CLI, chạy `codex plugin marketplace add NgBaoAnn/hcmus-course`, rồi mở
-`/plugins` để chọn **HCMUS Course** từ marketplace `hcmus-course-local`. Trong Codex
-desktop, thêm cùng GitHub marketplace trong Plugins Directory rồi cài plugin.
-Plugin cần local executor để chạy `course`.
+Trong Codex CLI, chạy lệnh terminal
+```sh
+codex plugin marketplace add NgBaoAnn/hcmus-course`
+```
+rồi mở
+```text
+`/plugins` 
+```
+để chọn **HCMUS Course** từ marketplace `hcmus-course-local`. 
+Trong Codex desktop, thêm plugin bằng GitHub marketplace trong Plugins Directory rồi cài plugin.
+Plugin này cần local executor để chạy `course`.
 
 ### OpenCode 2
 
@@ -36,9 +43,7 @@ Chạy:
 ```sh
 opencode plugin add 'github:NgBaoAnn/hcmus-course#main::path:plugins/hcmus-course'
 ```
-
-Khởi động lại OpenCode và dùng skill `setup` để kiểm tra CLI. Hướng dẫn cài, cập
-nhật và cách nạp skills thủ công cho bản cũ nằm tại [.opencode/INSTALL.md](.opencode/INSTALL.md).
+Sau đó khởi động lại OpenCode
 
 ### Antigravity
 
