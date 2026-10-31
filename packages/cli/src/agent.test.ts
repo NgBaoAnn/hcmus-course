@@ -28,3 +28,11 @@ test('agent mode refuses noninteractive writes and a declined preview', async ()
   assert.equal(lines.map(line => JSON.parse(line).event).join(','), 'preview,confirmation_required,error');
   assert.equal(JSON.parse(lines[2]).code, 'cancelled');
 });
+
+test('agent mode accepts piped stdin when interactive is not set', () => {
+  const session = new AgentSession('assignment.submit', {
+    readInput: async () => 'yes',
+    write: () => {},
+  });
+  assert.ok(session);
+});

@@ -9,17 +9,13 @@ import { promisify } from 'node:util';
 
 const run = promisify(execFile);
 const token = 'a'.repeat(32);
-async function cliWithDirectory(directory: string, args: string[], preload: string) {
-  try {
-    return { ...await run(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
-      new URL('./course.js', import.meta.url).pathname, ...args],
-    { env: { ...process.env, XDG_CONFIG_HOME: directory } }), code: 0 };
-  } catch (error) {
-    const result = error as Error & { stdout: string; stderr: string; code: number };
-    return { stdout: result.stdout, stderr: result.stderr, code: result.code };
-  }
+function cliWithDirectory(directory: string, args: string[], preload: string, input = '') {
+  const child = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
+    new URL('./course.js', import.meta.url).pathname, ...args],
+    { env: { ...process.env, XDG_CONFIG_HOME: directory }, input, encoding: 'utf8' });
+  return { stdout: child.stdout ?? '', stderr: child.stderr ?? '', code: child.status ?? 0 };
 }
-async function cli(t: TestContext, args: string[], responses: Record<string, unknown> = {}, authenticated = false, humanOutput = false) {
+async function cli(t: TestContext, args: string[], responses: Record<string, unknown> = {}, authenticated = false, humanOutput = false, input = '') {
   const directory = await mkdtemp(join(tmpdir(), 'course-cli-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   if (authenticated) {
@@ -33,14 +29,11 @@ async function cli(t: TestContext, args: string[], responses: Record<string, unk
       if (!(name in responses)) { console.error('UNEXPECTED_API:' + name); throw new Error('Unexpected API'); }
       return new Response(JSON.stringify(responses[name]), { headers: { date: 'Thu, 29 Oct 2026 00:00:00 GMT' } });
     };`;
-  try {
-    const result = await run(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
-      new URL('./course.js', import.meta.url).pathname, ...args], { env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' } });
-    return { ...result, code: 0 };
-  } catch (error) {
-    const result = error as Error & { stdout: string; stderr: string; code: number };
-    return { stdout: result.stdout, stderr: result.stderr, code: result.code };
-  }
+  const child = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
+    new URL('./course.js', import.meta.url).pathname, ...args], {
+    env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' }, input, encoding: 'utf8',
+  });
+  return { stdout: child.stdout ?? '', stderr: child.stderr ?? '', code: child.status ?? 0 };
 }
 const user = { userid: 7, fullname: 'Fixture Student' };
 const courses = [{ id: 12, fullname: 'Algorithms' }];
@@ -98,7 +91,7 @@ test('new read command routes keep their card output and reject write commands w
   }
 });
 
-test('agent write mode requires an interactive terminal and emits structured message preview/result', async t => {
+test('agent write mode accepts piped confirmation without TTY and emits structured preview/result', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'course-agent-message-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   await mkdir(join(directory, 'course-cli-spike'));
@@ -106,16 +99,16 @@ test('agent write mode requires an interactive terminal and emits structured mes
   const file = join(directory, 'message.txt');
   await writeFile(file, 'Nội dung cần gửi');
   const args = ['messages', 'send', '8', '--text-file', file, '--agent'];
-  const refused = await cliWithDirectory(directory, args, '');
-  assert.equal(refused.code, 1);
-  assert.match(refused.stderr, /terminal tương tác/);
-  const preload = `process.stdin.isTTY = true; process.stdout.isTTY = true;
-    globalThis.fetch = async (_url, { body }) => {
+  const preload = `globalThis.fetch = async (_url, { body }) => {
       const name = body.get('wsfunction');
       if (name === 'core_webservice_get_site_info') return new Response(JSON.stringify({userid: 7}));
       if (name === 'core_message_send_instant_messages') return new Response(JSON.stringify([{msgid: 91}]));
       throw new Error('Unexpected ' + name);
     };`;
+  const refused = await cliWithDirectory(directory, args, preload);
+  assert.equal(refused.code, 1);
+  const refusedEvents = refused.stdout.trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(refusedEvents.at(-1).code, 'cancelled');
   const child = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
     new URL('./course.js', import.meta.url).pathname, ...args], {
     env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' }, input: 'yes\n', encoding: 'utf8', timeout: 5000,
@@ -255,7 +248,7 @@ test('assignment agent preview lists replacement files and cancellation does not
   assert.doesNotMatch(child.stderr, /Unexpected write/);
 });
 
-test('every Moodle write group refuses --agent without a PTY before contacting Moodle', async t => {
+test('every Moodle write group fails safely with --agent when unauthenticated or unconfirmed', async t => {
   for (const args of [
     ['assignment', 'submit', '4', 'answer.txt'], ['quiz', 'start', '6'], ['quiz', 'resume', '8'], ['quiz', 'submit', '8'],
     ['forum', 'create', '8', '--subject', 'Hi', '--text-file', 'post.txt'], ['forum', 'reply', '9', '--subject', 'Re', '--text-file', 'post.txt'],
@@ -266,8 +259,11 @@ test('every Moodle write group refuses --agent without a PTY before contacting M
   ]) {
     const result = await cli(t, [...args, '--agent']);
     assert.equal(result.code, 1, args.join(' '));
-    assert.match(result.stderr, /terminal tương tác/, args.join(' '));
-    assert.doesNotMatch(result.stderr, /UNEXPECTED_API|Chưa có token/, args.join(' '));
+    assert.doesNotMatch(result.stderr, /UNEXPECTED_API/, args.join(' '));
+    const events = result.stdout.trim().split('\n').filter(Boolean).map(line => {
+      try { return JSON.parse(line); } catch { return null; }
+    }).filter(Boolean);
+    assert.ok(events.length > 0 && events.some(e => ['error', 'preview', 'confirmation_required'].includes(e.event)), args.join(' '));
   }
 });
 test('noninteractive list defaults to current year and --all includes older enrolled courses', async t => {

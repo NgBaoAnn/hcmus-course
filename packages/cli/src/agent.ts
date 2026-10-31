@@ -1,9 +1,21 @@
-import { ask } from './terminal.js';
+import { createInterface } from 'node:readline/promises';
 
 interface AgentIO {
   interactive?: boolean;
   readInput?: () => Promise<string>;
   write?: (line: string) => void;
+}
+
+async function readLineFromStdin(): Promise<string> {
+  const io = createInterface({ input: process.stdin });
+  try {
+    const iterator = io[Symbol.asyncIterator]();
+    const next = await iterator.next();
+    if (next.done) throw new Error('stdin kết thúc trước khi xác nhận.');
+    return next.value;
+  } finally {
+    io.close();
+  }
 }
 
 export class AgentSession {
@@ -12,8 +24,8 @@ export class AgentSession {
   private declined = false;
 
   constructor(readonly operation: string, io: AgentIO = {}) {
-    if (!(io.interactive ?? process.stdin.isTTY)) throw new Error('Chế độ agent cần terminal tương tác để xác nhận thao tác ghi.');
-    this.readInput = io.readInput ?? (() => ask(''));
+    if (io.interactive === false) throw new Error('Chế độ agent cần terminal tương tác để xác nhận thao tác ghi.');
+    this.readInput = io.readInput ?? readLineFromStdin;
     this.write = io.write ?? (line => { process.stdout.write(`${line}\n`); });
   }
 
