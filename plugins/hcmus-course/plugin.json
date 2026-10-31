@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "hcmus-course",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Use HCMUS FIT Moodle Course through a locally installed Course CLI.",
   "author": { "name": "NgBaoAnn", "url": "https://github.com/NgBaoAnn" },
   "homepage": "https://github.com/NgBaoAnn/hcmus-course",
