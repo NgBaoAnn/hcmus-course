@@ -6,7 +6,7 @@ Four skills guide local Codex, Claude Code, OpenCode, Antigravity, Cursor, and o
 the student's computer. The plugin contains no Moodle credentials or MCP server.
 
 The skills cover setup, read-only workflows, Assignment submission, and Quiz
-attempts. Agent writes use `--agent` in a persistent PTY, show the concrete
+attempts. Agent writes use `--agent` with piped confirmation or an interactive stream, show the concrete
 preview in chat, and wait for the student's approval before confirming.
 
 See the [repository README](../../README.md) for installation on each agent host.

@@ -37,7 +37,16 @@ The CLI preview must list the intended final file set. `assignment download` fet
 
 ## Confirmation and result
 
-For any local agent, append `--agent` and start the command in a **persistent local PTY session** with explicit ID and files. Use your host's PTY-capable terminal tool so you can send input to that same session; a one-shot command is insufficient. The flag changes output to JSONL; it does **not** bypass confirmation. Parse lines with `schema: 1`; the PTY may echo input. Relay the `preview.preview` text, including account, target assignment, full replacement file set, online text, draft/final action, and group effect, in chat. After `confirmation_required`, wait for explicit approval of that concrete preview, then send `yes` to the **same PTY session**. If declined, send `no`; `error.code: cancelled` means no upload occurred. Inspect `result.result.state` and recheck `assignment status`: `submitted` means final submission, `saved` means not final, and `uncertain` means verification failed. A group may still need other members to confirm. On another `error`, timeout, or uncertainty, inspect status and the website; never retry a write or claim success automatically. Without `--agent`, the human TUI remains available.
+Append `--agent` to enable structured JSONL output on stdout. The flag does **not** bypass confirmation and works with piped stdin or a terminal session (no PTY required).
+
+**Execution options:**
+- **Piped confirmation (one-shot after user consent):** When the user has already explicitly approved the preview content and file list in chat, pipe `yes\n` directly:
+  ```sh
+  printf "yes\n" | course assignment submit <assignment-id> [files...] --agent
+  ```
+- **Interactive agent stream:** Run with subprocess stdin/stdout attached. Parse lines with `schema: 1`. Relay the `preview.preview` text (account, assignment, full replacement files, online text, draft/final action, group effect, submission statement) in chat. After `confirmation_required`, wait for user approval, then write `yes\n` to process stdin (`no\n` to cancel; `error.code: cancelled` confirms no write occurred).
+
+Inspect `result.result.state` and recheck `assignment status`: `submitted` means final submission, `saved` means draft only, and `uncertain` means verification failed. A group may still need other members to confirm. On any `error`, timeout, or uncertainty, inspect status and the website; never retry a write or claim success automatically. Without `--agent`, the human TUI remains available.
 
 ## Common mistakes
 
