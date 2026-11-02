@@ -529,6 +529,29 @@ test('CLI JSON retains IDs, timestamps and structured warnings while diagnostics
   assert.equal(data.assignments[0].webUrl, 'https://courses.fit.hcmus.edu.vn/mod/assign/view.php?id=40');
   assert.deepEqual(data.warnings, [warning]); assert.ok(!result.stdout.includes(token));
 });
+test('course members returns enrolled students and teachers in cards and JSON', async t => {
+  const users = [
+    { id: 10, fullname: 'Mai Anh Tuấn', email: 'matuan@fit.hcmus.edu.vn', roles: [{ shortname: 'editingteacher' }] },
+    { id: 18121, fullname: 'Lê Văn Tuấn Kiệt', email: '22120171@student.hcmus.edu.vn', roles: [{ shortname: 'student' }] },
+  ];
+  const responses = { core_enrol_get_enrolled_users: users };
+
+  // JSON output
+  const jsonResult = await cli(t, ['members', '--course', '12', '--query', 'Tuấn Kiệt', '--json'], responses, true);
+  assert.equal(jsonResult.code, 0, jsonResult.stderr);
+  const data = JSON.parse(jsonResult.stdout);
+  assert.equal(data.members.length, 1);
+  assert.equal(data.members[0].fullname, 'Lê Văn Tuấn Kiệt');
+  assert.equal(data.members[0].mssv, '22120171');
+
+  // Human card output
+  const cardResult = await cli(t, ['members', '--course', '12'], responses, true, true);
+  assert.equal(cardResult.code, 0, cardResult.stderr);
+  assert.match(cardResult.stdout, /Lê Văn Tuấn Kiệt/);
+  assert.match(cardResult.stdout, /22120171/);
+  assert.match(cardResult.stdout, /Mai Anh Tuấn/);
+});
+
 test('noninteractive read commands emit JSON without an explicit flag', async t => {
   const warning = { warningcode: 'partial', message: 'Incomplete fixture data' };
   const listed = await cli(t, ['assignment', 'list', '--course', '12'], {

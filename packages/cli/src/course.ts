@@ -9,7 +9,7 @@ import { api, decodeAppToken, publicConfig, SITE, type SiteInfo } from './moodle
 import { listAssignments, viewAssignment, assignmentStatus, downloadAssignment, submitAssignment } from './assignments.js';
 import { listQuizzes, viewQuiz, quizAttempts, quizStatus, startQuiz, resumeQuiz, submitQuiz, reviewQuiz } from './quizzes.js';
 import { ask, formatCards, formatLocalDate, formatStatus, render, requireId, show, withProgress } from './terminal.js';
-import { listCourses, viewCourse, deadlines, grades, notices, type Course, type AssignmentsResponse } from './student.js';
+import { listCourses, viewCourse, deadlines, grades, notices, courseMembers, type Course, type AssignmentsResponse } from './student.js';
 import { calendar, progress, notifications, forums, forumDiscussions, forumView } from './campus.js';
 import { materials, downloadMaterial, markCompletion, forumWrite, inbox, conversation, sendMessage,
   markNotification, todos, favouriteCourses, setFavouriteCourse, createPersonalEvent, exportCalendar } from './extras.js';
@@ -519,21 +519,22 @@ async function main() {
     const result = await exportCalendar(await readToken(), output, values.days === undefined ? 365 : requireId(String(values.days), 'Số ngày'));
     reportWarnings(result.warnings);
     printCards('Xuất lịch iCal', [{ title: result.path, lines: [`Sự kiện: ${result.count}`, `Khoảng: ${result.days} ngày tới`] }]);
-  } else if (['list', 'view', 'deadlines', 'grades', 'notices', 'calendar', 'progress', 'notifications'].includes(args[0])) {
+  } else if (['list', 'view', 'deadlines', 'grades', 'notices', 'calendar', 'progress', 'notifications', 'members'].includes(args[0])) {
     const action = args[0];
     const options = {
       json: { type: 'boolean' as const },
       ...(action === 'list' ? { all: { type: 'boolean' as const } } : {}),
-      ...(['deadlines', 'grades', 'notices', 'calendar', 'progress'].includes(action) ? { course: { type: 'string' as const } } : {}),
+      ...(['deadlines', 'grades', 'notices', 'calendar', 'progress', 'members'].includes(action) ? { course: { type: 'string' as const } } : {}),
       ...(['deadlines', 'calendar'].includes(action) ? { days: { type: 'string' as const } } : {}),
       ...(action === 'deadlines' ? { overdue: { type: 'boolean' as const } } : {}),
       ...(action === 'notifications' ? { limit: { type: 'string' as const } } : {}),
+      ...(action === 'members' ? { query: { type: 'string' as const } } : {}),
     };
     const { values, positionals } = parseArgs({ args: args.slice(1), options, allowPositionals: true });
     const json = jsonOutput(values.json);
-    if (positionals.length > (action === 'view' ? 1 : 0)) throw new Error(`Đối số không hợp lệ cho course ${action}.`);
-    const id = action === 'view' || ['grades', 'notices', 'progress'].includes(action)
-      ? await chooseId(action === 'view' ? positionals[0] : typeof values.course === 'string' ? values.course : undefined,
+    if (positionals.length > (['view', 'members'].includes(action) ? 1 : 0)) throw new Error(`Đối số không hợp lệ cho course ${action}.`);
+    const id = action === 'view' || ['grades', 'notices', 'progress', 'members'].includes(action)
+      ? await chooseId(action === 'view' || action === 'members' ? positionals[0] ?? (typeof values.course === 'string' ? values.course : undefined) : typeof values.course === 'string' ? values.course : undefined,
         'Course ID', async () => courseChoices(await readToken()), json)
       : values.course === undefined ? undefined : requireId(String(values.course), 'Course ID');
     const days = values.days === undefined ? (action === 'deadlines' ? 30 : 14) : requireId(typeof values.days === 'string' ? values.days : undefined, 'Số ngày');
@@ -555,7 +556,9 @@ async function main() {
       : action === 'grades' ? await grades(token, id)
       : action === 'notices' ? await notices(token, id)
       : action === 'calendar' ? await calendar(token, id, days)
-      : action === 'progress' ? await progress(token, id) : await notifications(token, limit);
+      : action === 'progress' ? await progress(token, id)
+      : action === 'members' ? await courseMembers(token, id, typeof values.query === 'string' ? values.query : undefined)
+      : await notifications(token, limit);
     const result = json ? await load() : await withProgress(action === 'deadlines' ? 'Đang kiểm tra hạn từ Moodle…' : 'Đang đọc dữ liệu Moodle…', load);
     reportWarnings(result.warnings);
     if (json) show(result, { json: true });
@@ -590,6 +593,11 @@ async function main() {
       title: `${activity.state > 0 ? '✓' : '○'} ${activity.name}`,
       lines: [`Loại: ${activity.type}`, `Trạng thái: ${activity.state === 0 ? 'Chưa hoàn thành' : activity.state === 3 ? 'Hoàn thành, chưa đạt' : 'Đã hoàn thành'}`,
         activity.timecompleted ? `Hoàn thành lúc: ${formatLocalDate(activity.timecompleted)}` : '', activity.webUrl],
+    })));
+    else if ('members' in result) printCards(`Thành viên môn #${result.courseid} · ${result.members.length}`, result.members.map(member => ({
+      title: `${member.role === 'teacher' ? '👨‍🏫 ' : '👤 '}${member.fullname}${member.mssv ? ` · MSSV: ${member.mssv}` : ''}`,
+      lines: [field('ID', member.id), field('Vai trò', member.role === 'teacher' ? 'Giảng viên' : (member.role === 'student' ? 'Sinh viên' : 'Khác')),
+        ...(member.email ? [field('Email', member.email)] : [])],
     })));
     else if ('notifications' in result) printCards(`Hộp thông báo · ${result.unreadcount} chưa đọc`, result.notifications.map(item => ({
       title: `${item.read ? '◌' : '●'} ${item.subject || 'Thông báo'}`,
@@ -656,7 +664,8 @@ async function main() {
         'course calendar [--course &lt;course-id&gt;] [--days &lt;số-ngày&gt;]',
         'course calendar export --output &lt;file.ics&gt; [--days &lt;số&gt;]',
         'course event create --name &lt;tên&gt; --at &lt;ISO-8601&gt; --minutes &lt;số&gt;',
-        'course progress --course &lt;course-id&gt;', 'course completion done|undo &lt;module-id&gt; --course &lt;course-id&gt;',
+        'course progress --course &lt;course-id&gt;', 'course members --course &lt;course-id&gt; [--query &lt;từ-khóa&gt;]',
+        'course completion done|undo &lt;module-id&gt; --course &lt;course-id&gt;',
         'course todo [--days &lt;số&gt;]', 'course favourites list|add|remove [course-id]',
         'course notifications [--limit &lt;số&gt;]', 'course notifications read &lt;notification-id&gt;'] },
       { title: 'Tài liệu & tin nhắn', lines: ['course materials list --course &lt;course-id&gt;',
