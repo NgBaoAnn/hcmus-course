@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { listCourses, viewCourse, deadlines, grades, notices } from './student.js';
+import { listCourses, viewCourse, deadlines, grades, notices, courseMembers } from './student.js';
 
 const token = 'a'.repeat(32);
 const now = Math.floor(Date.now() / 1000);
@@ -204,6 +204,31 @@ test('empty deadlines and notices are explicit empty lists', async (t) => {
   fixture(t, { mod_forum_get_forums_by_courses: [] });
   assert.deepEqual((await deadlines(token, { courseId: 12 })).deadlines, []);
   assert.deepEqual((await notices(token, 12)).notices, []);
+});
+
+test('courseMembers filters classmates by name or student ID and parses MSSV', async (t) => {
+  const users = [
+    { id: 10, fullname: 'Mai Anh Tuấn', email: 'matuan@fit.hcmus.edu.vn', roles: [{ shortname: 'editingteacher' }] },
+    { id: 18121, fullname: 'Lê Văn Tuấn Kiệt', email: '22120171@student.hcmus.edu.vn', roles: [{ shortname: 'student' }] },
+    { id: 18934, fullname: 'Nguyễn Bảo An', email: '23120190@student.hcmus.edu.vn', roles: [{ shortname: 'student' }] },
+  ];
+  const calls = fixture(t, { core_enrol_get_enrolled_users: users });
+  // Search by partial name
+  const byName = await courseMembers(token, 12, 'Tuấn Kiệt');
+  assert.equal(byName.members.length, 1);
+  assert.equal(byName.members[0].fullname, 'Lê Văn Tuấn Kiệt');
+  assert.equal(byName.members[0].mssv, '22120171');
+  assert.equal(byName.members[0].role, 'student');
+
+  // Search by MSSV
+  const byMssv = await courseMembers(token, 12, '23120190');
+  assert.equal(byMssv.members.length, 1);
+  assert.equal(byMssv.members[0].fullname, 'Nguyễn Bảo An');
+
+  // Search all without query
+  const all = await courseMembers(token, 12);
+  assert.equal(all.members.length, 3);
+  assert.equal(calls.at(-1)?.params.courseid, '12');
 });
 
 test('invalid IDs and day windows fail before any request', async (t) => {

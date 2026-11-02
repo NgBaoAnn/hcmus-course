@@ -201,3 +201,43 @@ export async function notices(token: string, id: InputId) {
   }
   return { courseid: id, notices, warnings };
 }
+
+export interface EnrolledMember {
+  id: number;
+  fullname: string;
+  mssv: string | null;
+  email: string | null;
+  role: 'student' | 'teacher' | 'other';
+}
+
+interface RawEnrolledUser {
+  id: number;
+  fullname: string;
+  email?: string;
+  roles?: { shortname?: string }[];
+}
+
+export async function courseMembers(token: string, id: InputId, query?: string) {
+  id = requireId(String(id), 'Course ID');
+  const warnings: MoodleWarning[] = [];
+  const users = await api<RawEnrolledUser[]>(token, 'core_enrol_get_enrolled_users', { courseid: id });
+  if (!Array.isArray(users)) throw new Error('Danh sách thành viên môn học không hợp lệ.');
+  const normalize = (text: string) => text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  const q = query ? normalize(query) : '';
+  const members: EnrolledMember[] = users.map((u) => {
+    const email = u.email ?? null;
+    const isStudentEmail = email ? /^\d+@student/i.test(email) : false;
+    const mssv = isStudentEmail && email ? email.split('@')[0] : (email && /^\d{7,10}$/.test(email.split('@')[0]) ? email.split('@')[0] : null);
+    const isTeacher = u.roles?.some(r => ['editingteacher', 'teacher'].includes(r.shortname ?? ''));
+    const isStudent = u.roles?.some(r => r.shortname === 'student') || !!mssv;
+    const role: EnrolledMember['role'] = isTeacher ? 'teacher' : (isStudent ? 'student' : 'other');
+    return { id: u.id, fullname: render(u.fullname), mssv, email, role };
+  }).filter((m) => {
+    if (!q) return true;
+    const nameMatch = normalize(m.fullname).includes(q);
+    const mssvMatch = m.mssv ? normalize(m.mssv).includes(q) : false;
+    return nameMatch || mssvMatch;
+  }).sort((a, b) => a.fullname.localeCompare(b.fullname, 'vi'));
+
+  return { courseid: id, members, warnings };
+}
