@@ -65,12 +65,54 @@ Present a concise, structured checklist to the student covering:
 
 ---
 
+## Team vs. Individual Confirmation & Realtime Member Lookup
+
+HCMUS FIT Moodle courses feature an institutional submission plugin called **`fitnhom` (Thành viên nhóm)**. When submitting an assignment on web, Moodle requires confirming whether the submission is:
+1. **Em làm một mình** (Individual work)
+2. **Bài nhóm** (Group work with member picker)
+
+Before packaging and submitting files, **always inquire in chat**:
+> *"Bài nộp này bạn làm cá nhân (một mình) hay làm việc nhóm?"*
+
+### Individual Workflow ("Em làm một mình")
+- Package the deliverable named after the student's own ID (e.g., `23120190.zip` or as specified in course rules).
+- Execute `course assignment submit <assignment-id> <file> --agent`.
+- After successful CLI submission, inform the student:
+  > *"Bài tập đã được tải lên Moodle thành công. Vì Moodle FIT có kiểm tra 'Thành viên nhóm', hãy mở link bài tập để xác nhận lựa chọn **Em làm một mình**: `<webUrl>`."*
+
+### Team Workflow ("Bài nhóm")
+If the student works in a team:
+1. **Ask for member names in chat**: The student does **not** need to recall student IDs or full formal names. They can simply type: *"Em làm với Tuấn Kiệt và Bảo An"*.
+2. **Realtime Classmates Lookup**: Use the course ID to search the enrolled class roster:
+   ```sh
+   course members --course <course-id> --query "Tuấn Kiệt"
+   course members --course <course-id> --query "Bảo An"
+   ```
+3. **Present Interactive Member Selection**:
+   Display the matching students with full name and student ID (MSSV):
+   ```text
+   Tìm thấy các thành viên trong lớp:
+   1. Lê Văn Tuấn Kiệt (MSSV: 22120171)
+   2. Nguyễn Bảo An (MSSV: 23120207)
+   ```
+   Confirm with the student that these represent their exact teammates.
+4. **Construct Group Deliverable Name**:
+   Automatically assemble the file name using the verified student IDs in required order, e.g.:
+   `22120171_23120207.zip`.
+5. **Submit & Direct Web Confirmation**:
+   Submit the packaged file via `course assignment submit`.
+   Because Moodle FIT's `fitnhom` web interface manages the team database records on the browser form, conclude the submission by providing the direct link:
+   > *"Đã nộp tệp bài nhóm `<filename>` thành công lên Moodle. Vui lòng mở link bài nộp: `<webUrl>` để tick chọn **Bài nhóm** và thêm các thành viên `<MSSV1, MSSV2>` vào bài nộp trên web."*
+
+---
+
 ## Quick reference
 
 | Need | Command |
 | --- | --- |
 | Find assignment ID | `course assignment list [--course <course-id>]` |
 | Read prompt and attachments | `course assignment view <assignment-id>` |
+| Search classmates / team members | `course members --course <course-id> [--query <tên/mssv>]` |
 | Inspect submission and group state | `course assignment status <assignment-id>` |
 | Download prompt attachments | `course assignment download <assignment-id> [--output <directory>]` |
 | Submit files or plain text | `course assignment submit <assignment-id> [files...] [--text-file <path>] [--draft] --agent` (agent execution) |

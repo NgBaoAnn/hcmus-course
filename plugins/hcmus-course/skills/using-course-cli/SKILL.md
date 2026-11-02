@@ -20,6 +20,7 @@ If `course` is missing or authentication fails, follow the plugin's [setup skill
 | Course contents | `course view <course-id>` |
 | Upcoming assignments and quiz closing | `course deadlines` (next 30 days), `--days N`, `--overdue` |
 | Actionable work and Moodle events | `course todo`, `course calendar` |
+| Classmates / Enrolled members | `course members --course <course-id> [--query <tên/mssv>]` |
 | Grades and announcements | `course grades --course <course-id>`, `course notices --course <course-id>` |
 | Resources | `course materials list --course <course-id>` |
 | Assignment and quiz details | `course assignment list|view|status`, `course quiz list|view|attempts|status|review` |
