@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { AgentSession } from './agent.js';
+import { AgentSession } from '../src/agent.js';
 
 test('agent mode emits parseable preview, consent, result, and input events', async () => {
   const lines: string[] = [];

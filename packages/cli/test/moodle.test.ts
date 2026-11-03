@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { test } from 'node:test';
-import { api, decodeAppToken, SITE } from './moodle.js';
+import { api, decodeAppToken, SITE } from '../src/moodle.js';
 
 const passport = 'test-passport';
 const siteId = createHash('md5').update(SITE + passport).digest('hex');

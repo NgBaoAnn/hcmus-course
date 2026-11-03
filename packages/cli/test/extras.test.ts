@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { materials, downloadMaterial, markCompletion, forumWrite, inbox, conversation,
   sendMessage, markNotification, todos, favouriteCourses, setFavouriteCourse,
-  createPersonalEvent, exportCalendar } from './extras.js';
+  createPersonalEvent, exportCalendar } from '../src/extras.js';
 
 const token = 'a'.repeat(32);
 const site = 'https://courses.fit.hcmus.edu.vn';

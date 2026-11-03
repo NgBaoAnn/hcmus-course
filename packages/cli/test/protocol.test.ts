@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { test } from 'node:test';
-import { openDefaultBrowser, registerProtocolHandler, unregisterProtocolHandler } from './protocol.js';
+import { openDefaultBrowser, registerProtocolHandler, unregisterProtocolHandler } from '../src/protocol.js';
 
 test('default browser opens through the operating system URL launcher', async () => {
   const calls: [string, string[]][] = [];

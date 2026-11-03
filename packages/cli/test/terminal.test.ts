@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { confirm, formatCards, formatLocalDate, formatStatus, render, requireId, selectItem, show } from './terminal.js';
+import { confirm, formatCards, formatLocalDate, formatStatus, render, requireId, selectItem, show } from '../src/terminal.js';
 
 test('IDs must be positive safe integers', () => {
   assert.equal(requireId('42', 'quiz'), 42);

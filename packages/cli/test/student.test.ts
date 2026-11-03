@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { listCourses, viewCourse, deadlines, grades, notices, courseMembers } from './student.js';
+import { listCourses, viewCourse, deadlines, grades, notices, courseMembers } from '../src/student.js';
 
 const token = 'a'.repeat(32);
 const now = Math.floor(Date.now() / 1000);
@@ -253,7 +253,8 @@ test('student CLI validates arguments and supports JSON and readable output', as
       body.get('wsfunction') === 'core_webservice_get_site_info' ? {userid: 7} :
       body.get('wsfunction') === 'core_course_get_categories' ? [{id: 192, name: '${year}-${year + 1}', path: '/192'},
         {id: 195, name: 'Chính Quy', path: '/192/193/195'}] : [{id: 12, fullname: 'Algorithms', category: 195}]));`);
-    const run = (args: string[], tty = false) => spawnSync(process.execPath, ['--import', preload, 'course.js', ...args], {
+    const coursePath = new URL('../src/course.js', import.meta.url).pathname;
+    const run = (args: string[], tty = false) => spawnSync(process.execPath, ['--import', preload, coursePath, ...args], {
       cwd: import.meta.dirname, env: { ...process.env, XDG_CONFIG_HOME: directory, COURSE_TEST_TTY: tty ? '1' : '0', NO_COLOR: '1' }, encoding: 'utf8',
     });
     const json = run(['list', '--json']);

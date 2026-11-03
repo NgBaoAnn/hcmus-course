@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
-const root = new URL('../../../', import.meta.url);
+const root = new URL('../../../../', import.meta.url);
 const pluginRoot = new URL('plugins/hcmus-course/', root);
 
 test('skills-only local plugin points at this repository and requires local execution', async () => {

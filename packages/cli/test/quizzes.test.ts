@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test, type TestContext } from 'node:test';
-import { listQuizzes, viewQuiz, quizAttempts, quizStatus, startQuiz, resumeQuiz, submitQuiz, reviewQuiz } from './quizzes.js';
-import { api, type ResponseTiming } from './moodle.js';
+import { listQuizzes, viewQuiz, quizAttempts, quizStatus, startQuiz, resumeQuiz, submitQuiz, reviewQuiz } from '../src/quizzes.js';
+import { api, type ResponseTiming } from '../src/moodle.js';
 
 const token = 'a'.repeat(32);
 const now = 1793251000;
@@ -352,11 +352,12 @@ test('clearing truefalse omits the answer rather than inventing a truthy radio v
 });
 test('quiz commands validate ID and flags before reading authentication', async () => {
   const { spawnSync } = await import('node:child_process');
-  const run = (...args: string[]) => spawnSync(process.execPath, ['dist/course.js', 'quiz', ...args], { encoding: 'utf8' });
+  const coursePath = new URL('../src/course.js', import.meta.url).pathname;
+  const run = (...args: string[]) => spawnSync(process.execPath, [coursePath, 'quiz', ...args], { encoding: 'utf8' });
   assert.match(run('status', '0').stderr, /Attempt ID/);
   assert.match(run('start', '4', '--json').stderr, /ERR_PARSE_ARGS_UNKNOWN_OPTION/);
   assert.match(run('list', '--course', 'no').stderr, /Course ID/);
-  assert.equal(spawnSync(process.execPath, ['dist/course.js', '--help'], { encoding: 'utf8' }).stdout.includes('quiz'), true);
+  assert.equal(spawnSync(process.execPath, [coursePath, '--help'], { encoding: 'utf8' }).stdout.includes('quiz'), true);
 });
 
 test('submit detects an autosaved answer change even with unchanged sequence metadata', async t => {

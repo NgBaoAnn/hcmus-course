@@ -5,7 +5,7 @@
   "scripts": {
     "build": "npm run build --workspace hcmus-course-cli",
     "test": "npm run test --workspace hcmus-course-cli",
-    "start": "node packages/cli/dist/course.js",
+    "start": "node packages/cli/dist/src/course.js",
     "prepare": "npm run build"
   }
 }

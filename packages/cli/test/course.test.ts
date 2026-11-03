@@ -11,7 +11,7 @@ const run = promisify(execFile);
 const token = 'a'.repeat(32);
 function cliWithDirectory(directory: string, args: string[], preload: string, input = '') {
   const child = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
-    new URL('./course.js', import.meta.url).pathname, ...args],
+    new URL('../src/course.js', import.meta.url).pathname, ...args],
     { env: { ...process.env, XDG_CONFIG_HOME: directory }, input, encoding: 'utf8' });
   return { stdout: child.stdout ?? '', stderr: child.stderr ?? '', code: child.status ?? 0 };
 }
@@ -30,7 +30,7 @@ async function cli(t: TestContext, args: string[], responses: Record<string, unk
       return new Response(JSON.stringify(responses[name]), { headers: { date: 'Thu, 29 Oct 2026 00:00:00 GMT' } });
     };`;
   const child = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
-    new URL('./course.js', import.meta.url).pathname, ...args], {
+    new URL('../src/course.js', import.meta.url).pathname, ...args], {
     env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' }, input, encoding: 'utf8',
   });
   return { stdout: child.stdout ?? '', stderr: child.stderr ?? '', code: child.status ?? 0 };
@@ -110,7 +110,7 @@ test('agent write mode accepts piped confirmation without TTY and emits structur
   const refusedEvents = refused.stdout.trim().split('\n').map(line => JSON.parse(line));
   assert.equal(refusedEvents.at(-1).code, 'cancelled');
   const child = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
-    new URL('./course.js', import.meta.url).pathname, ...args], {
+    new URL('../src/course.js', import.meta.url).pathname, ...args], {
     env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' }, input: 'yes\n', encoding: 'utf8', timeout: 5000,
   });
   assert.equal(child.status, 0, child.stderr);
@@ -134,7 +134,7 @@ test('human message confirmation shows literal angle-bracket text before sending
       throw new Error('Unexpected write ' + name);
     };`;
   const child = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
-    new URL('./course.js', import.meta.url).pathname, 'messages', 'send', '8', '--text-file', file], {
+    new URL('../src/course.js', import.meta.url).pathname, 'messages', 'send', '8', '--text-file', file], {
     env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' }, input: 'no\n', encoding: 'utf8', timeout: 5000,
   });
   assert.equal(child.status, 1);
@@ -156,7 +156,7 @@ test('human forum confirmation shows literal subject and body before posting', a
       throw new Error('Unexpected write ' + name);
     };`;
   const child = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
-    new URL('./course.js', import.meta.url).pathname, 'forum', 'create', '8', '--subject', 'Topic <code>literal</code>', '--text-file', file], {
+    new URL('../src/course.js', import.meta.url).pathname, 'forum', 'create', '8', '--subject', 'Topic <code>literal</code>', '--text-file', file], {
     env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' }, input: 'no\n', encoding: 'utf8', timeout: 5000,
   });
   assert.equal(child.status, 1);
@@ -179,7 +179,7 @@ test('forum agent preview contains outgoing text and refusal never creates a pos
       throw new Error('Unexpected write ' + name);
     };`;
   const child = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
-    new URL('./course.js', import.meta.url).pathname, 'forum', 'create', '8', '--subject', 'Tiêu đề', '--text-file', file, '--agent'], {
+    new URL('../src/course.js', import.meta.url).pathname, 'forum', 'create', '8', '--subject', 'Tiêu đề', '--text-file', file, '--agent'], {
     env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' }, input: 'no\n', encoding: 'utf8', timeout: 5000,
   });
   assert.equal(child.status, 1);
@@ -202,7 +202,7 @@ test('quiz agent submit labels its first approval as summary reading and cannot 
       throw new Error('Unexpected write ' + name);
     };`;
   const child = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
-    new URL('./course.js', import.meta.url).pathname, 'quiz', 'submit', '8', '--agent'], {
+    new URL('../src/course.js', import.meta.url).pathname, 'quiz', 'submit', '8', '--agent'], {
     env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' }, input: 'no\n', encoding: 'utf8', timeout: 5000,
   });
   assert.equal(child.status, 1);
@@ -237,7 +237,7 @@ test('assignment agent preview lists replacement files and cancellation does not
       throw new Error('Unexpected write ' + name);
     };`;
   const child = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
-    new URL('./course.js', import.meta.url).pathname, 'assignment', 'submit', '4', file, '--agent'], {
+    new URL('../src/course.js', import.meta.url).pathname, 'assignment', 'submit', '4', file, '--agent'], {
     env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' }, input: 'no\n', encoding: 'utf8', timeout: 5000,
   });
   assert.equal(child.status, 1, child.stderr);
@@ -295,7 +295,7 @@ test('interactive list lets the student choose all enrolled courses', async t =>
       body.get('wsfunction') === 'core_enrol_get_users_courses' ?
         [{id: 12, fullname: 'Current'}, {id: 13, fullname: 'Older'}] : []));`;
   const result = spawnSync(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
-    new URL('./course.js', import.meta.url).pathname, 'list'], {
+    new URL('../src/course.js', import.meta.url).pathname, 'list'], {
     env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' }, input: '2\n', encoding: 'utf8', timeout: 5000,
   });
   assert.equal(result.status, 0, result.stderr);
@@ -320,7 +320,7 @@ test('missing IDs open a numbered picker in a terminal while explicit IDs remain
     const responses = ${JSON.stringify(responses)};
     globalThis.fetch = async (_url, { body }) => new Response(JSON.stringify(responses[body.get('wsfunction')]));`;
   const run = (args: string[], input?: string) => spawnSync(process.execPath,
-    ['--import', `data:text/javascript,${encodeURIComponent(preload)}`, new URL('./course.js', import.meta.url).pathname, ...args],
+    ['--import', `data:text/javascript,${encodeURIComponent(preload)}`, new URL('../src/course.js', import.meta.url).pathname, ...args],
     { env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' }, input, encoding: 'utf8', timeout: 5000 });
   for (const [args, expected] of [
     [['view'], 'Week 1'], [['materials', 'list'], 'Slides'],
@@ -364,7 +364,7 @@ test('forum picker walks from forum to discussion with two user choices', async 
     const responses = ${JSON.stringify(responses)};
     globalThis.fetch = async (_url, { body }) => new Response(JSON.stringify(responses[body.get('wsfunction')]));`;
   const child = spawn(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
-    new URL('./course.js', import.meta.url).pathname, 'forum', 'view'],
+    new URL('../src/course.js', import.meta.url).pathname, 'forum', 'view'],
   { env: { ...process.env, XDG_CONFIG_HOME: directory, NO_COLOR: '1' } });
   let stderr = '';
   let stdout = '';
@@ -469,7 +469,7 @@ test('auth callback verifies the one-time passport and Moodle identity before sa
     return new Response(JSON.stringify({ userid: 7, fullname: 'Fixture Student' }));
   };`;
   const result = await run(process.execPath, ['--import', `data:text/javascript,${encodeURIComponent(preload)}`,
-    new URL('./course.js', import.meta.url).pathname, 'auth', 'callback', '--config-dir', config, callback]);
+    new URL('../src/course.js', import.meta.url).pathname, 'auth', 'callback', '--config-dir', config, callback]);
   assert.equal(result.stdout, ''); assert.equal(result.stderr, '');
   assert.deepEqual(JSON.parse(await readFile(join(config, 'auth.json'), 'utf8')), { token: callbackToken });
   assert.equal((await stat(join(config, 'auth.json'))).mode & 0o777, 0o600);

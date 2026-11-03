@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test, type TestContext } from 'node:test';
-import { calendar, progress, notifications, forums, forumDiscussions, forumView } from './campus.js';
+import { calendar, progress, notifications, forums, forumDiscussions, forumView } from '../src/campus.js';
 
 const token = 'a'.repeat(32);
 function fixture(t: TestContext, responses: Record<string, unknown>) {

@@ -3,7 +3,7 @@ import { test, type TestContext } from 'node:test';
 import { mkdtemp, writeFile, readFile, readdir, rm, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { listAssignments, viewAssignment, assignmentStatus, downloadAssignment, submitAssignment } from './assignments.js';
+import { listAssignments, viewAssignment, assignmentStatus, downloadAssignment, submitAssignment } from '../src/assignments.js';
 
 const token = 'a'.repeat(32);
 const site = 'https://courses.fit.hcmus.edu.vn';
@@ -270,7 +270,8 @@ test('CLI rejects unsupported flags, IDs and noninteractive submissions without 
     const data = method === 'core_webservice_get_site_info' ? {userid: 7} : method === 'core_enrol_get_users_courses' ? [{id: 12, fullname: 'Algorithms'}] :
       method === 'mod_assign_get_assignments' ? {courses: [{id: 12, assignments: [assignment]}], warnings: []} : status;
     return new Response(JSON.stringify(data)); };`);
-  const run = (...args: string[]) => spawnSync(process.execPath, ['--import', preload, 'course.js', 'assignment', ...args], {
+  const coursePath = new URL('../src/course.js', import.meta.url).pathname;
+  const run = (...args: string[]) => spawnSync(process.execPath, ['--import', preload, coursePath, 'assignment', ...args], {
     cwd: import.meta.dirname, env: { ...process.env, XDG_CONFIG_HOME: f.directory }, encoding: 'utf8',
   });
   const listed = run('list', '--json');

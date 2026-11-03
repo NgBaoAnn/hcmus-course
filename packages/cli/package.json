@@ -22,17 +22,16 @@
   },
   "type": "module",
   "bin": {
-    "course": "dist/course.js"
+    "course": "dist/src/course.js"
   },
   "files": [
-    "dist/*.js",
-    "!dist/*.test.js",
+    "dist/src/*.js",
     "README.md"
   ],
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node --test dist/*.test.js",
-    "start": "node dist/course.js",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "start": "node dist/src/course.js",
     "prepare": "npm run build"
   },
   "engines": {
